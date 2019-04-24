@@ -143,6 +143,11 @@ namespace BIM.IFC.Export.UI
          comboboxIfcType.Items.Add(new IFCVersionAttributes(IFCVersion.IFCBCA));
          comboboxIfcType.Items.Add(new IFCVersionAttributes(IFCVersion.IFC2x3FM));
 
+         // "Hidden" switch to enable the general IFC4 export that does not use any MVD restriction
+         string nonMVDOption = Environment.GetEnvironmentVariable("AllowNonMVDOption");
+         if (!string.IsNullOrEmpty(nonMVDOption) && nonMVDOption.Equals("true", StringComparison.InvariantCultureIgnoreCase))
+            comboboxIfcType.Items.Add(new IFCVersionAttributes(IFCVersion.IFC4));
+
          foreach (IFCFileFormat fileType in Enum.GetValues(typeof(IFCFileFormat)))
          {
             IFCFileFormatAttributes item = new IFCFileFormatAttributes(fileType);
@@ -1232,7 +1237,7 @@ namespace BIM.IFC.Export.UI
 
          // Set filter for file extension and default file extension 
          dlg.DefaultExt = ".txt";
-         dlg.Filter = Properties.Resources.UserDefinedParameterSets + @"|*.txt"; //@"|*.txt; *.ifcxml; *.ifcjson";
+         dlg.Filter = Properties.Resources.UserDefinedParameterSets + @"|*.txt; *.ifcxml; *.ifcjson";
          if (configuration != null && !string.IsNullOrWhiteSpace(configuration.ExportUserDefinedPsetsFileName))
          {
             string pathName = System.IO.Path.GetDirectoryName(configuration.ExportUserDefinedPsetsFileName);

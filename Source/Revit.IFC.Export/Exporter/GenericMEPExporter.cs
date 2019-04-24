@@ -72,7 +72,11 @@ namespace Revit.IFC.Export.Exporter
                BodyExporterOptions bodyExporterOptions = new BodyExporterOptions(true, ExportOptionsCache.ExportTessellationLevel.ExtraLow);
                if (0 == numPartsToExport)
                {
-                  using (PlacementSetter setter = PlacementSetter.Create(exporterIFC, element))
+                  // Check for containment override
+                  IFCAnyHandle overrideContainerHnd = null;
+                  ElementId overrideContainerId = ParameterUtil.OverrideContainmentParameter(exporterIFC, element, out overrideContainerHnd);
+
+                  using (PlacementSetter setter = PlacementSetter.Create(exporterIFC, element, null, null, overrideContainerId, overrideContainerHnd))
                   {
                      IFCAnyHandle localPlacementToUse = setter.LocalPlacement;
                      BodyData bodyData = null;
@@ -98,7 +102,11 @@ namespace Revit.IFC.Export.Exporter
                {
                   for (int ii = 0; ii < numPartsToExport; ii++)
                   {
-                     using (PlacementSetter setter = PlacementSetter.Create(exporterIFC, element, null, null, levels[ii]))
+                     // Check for containment override
+                     IFCAnyHandle overrideContainerHnd = null;
+                     ParameterUtil.OverrideContainmentParameter(exporterIFC, element, out overrideContainerHnd);
+
+                     using (PlacementSetter setter = PlacementSetter.Create(exporterIFC, element, null, null, levels[ii], overrideContainerHnd))
                      {
                         IFCAnyHandle localPlacementToUse = setter.LocalPlacement;
 
@@ -179,13 +187,15 @@ namespace Revit.IFC.Export.Exporter
          ElementId typeId = element.GetTypeId();
          ElementType type = element.Document.GetElement(typeId) as ElementType;
          IFCAnyHandle styleHandle = null;
+         ElementId matId = ElementId.InvalidElementId;
+         Options geomOptions = GeometryUtil.GetIFCExportGeometryOptions();
+         bool hasMaterialAssociatedToType = false;
 
          if (type != null)
          {
             FamilyTypeInfo currentTypeInfo = ExporterCacheManager.FamilySymbolToTypeInfoCache.Find(typeId, false, exportType);
 
-            bool found = currentTypeInfo.IsValid();
-            if (!found)
+            if (!currentTypeInfo.IsValid())
             {
                string typeObjectType = NamingUtil.CreateIFCObjectName(exporterIFC, type);
 
@@ -199,11 +209,25 @@ namespace Revit.IFC.Export.Exporter
                   productWrapper.RegisterHandleWithElementType(type, exportType, styleHandle, propertySetsOpt);
                   currentTypeInfo.Style = styleHandle;
                   ExporterCacheManager.FamilySymbolToTypeInfoCache.Register(typeId, false, exportType, currentTypeInfo);
+
+                  Element elementType = element.Document.GetElement(element.GetTypeId());
+                  matId = BodyExporter.GetBestMaterialIdFromGeometryOrParameter(element.get_Geometry(geomOptions), exporterIFC, elementType);
+                  if (matId == ElementId.InvalidElementId)
+                     matId = BodyExporter.GetBestMaterialIdFromGeometryOrParameter(element.get_Geometry(geomOptions), exporterIFC, element);
+
+                  if (matId != ElementId.InvalidElementId)
+                  {
+                     currentTypeInfo.MaterialIds = new HashSet<ElementId>() { matId };
+                     hasMaterialAssociatedToType = true;
+                     CategoryUtil.CreateMaterialAssociation(exporterIFC, styleHandle, matId);
+                  }
                }
             }
             else
             {
                styleHandle = currentTypeInfo.Style;
+               if (currentTypeInfo.MaterialIds != null && currentTypeInfo.MaterialIds.Count > 0)
+                  hasMaterialAssociatedToType = true;
             }
          }
 
@@ -235,16 +259,22 @@ namespace Revit.IFC.Export.Exporter
 
          if (IFCAnyHandleUtil.IsNullOrHasNoValue(instanceHandle))
             return;
+         if (matId == ElementId.InvalidElementId && !hasMaterialAssociatedToType)
+         {
+            matId = BodyExporter.GetBestMaterialIdFromGeometryOrParameter(element.get_Geometry(geomOptions), exporterIFC, element);
+            if (matId != ElementId.InvalidElementId)
+               CategoryUtil.CreateMaterialAssociation(exporterIFC, instanceHandle, matId);
+         }
 
          if (roomId != ElementId.InvalidElementId)
          {
             //exporterIFC.RelateSpatialElement(roomId, instanceHandle);
             ExporterCacheManager.SpaceInfoCache.RelateToSpace(roomId, instanceHandle);
-            productWrapper.AddElement(element, instanceHandle, setter, extraParams, false);
+            productWrapper.AddElement(element, instanceHandle, setter, extraParams, false, exportType);
          }
          else
          {
-            productWrapper.AddElement(element, instanceHandle, setter, extraParams, true);
+            productWrapper.AddElement(element, instanceHandle, setter, extraParams, true, exportType);
          }
 
          OpeningUtil.CreateOpeningsIfNecessary(instanceHandle, element, extraParams, null, exporterIFC, localPlacementToUse, setter, productWrapper);

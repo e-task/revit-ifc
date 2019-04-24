@@ -766,10 +766,9 @@ namespace Revit.IFC.Export.Utility
       public static UV ProjectPointToXYPlaneOfLCS(Transform lcs, XYZ projDir, XYZ point)
       {
          XYZ zDir = lcs.BasisZ;
-
          double denom = projDir.DotProduct(zDir);
          if (MathUtil.IsAlmostZero(denom))
-            return null;
+            return new UV(point.X, point.Y);
 
          XYZ xDir = lcs.BasisX;
          XYZ yDir = lcs.BasisY;
@@ -3055,6 +3054,8 @@ namespace Revit.IFC.Export.Utility
       public static IFCAnyHandle GetIndexedTriangles(IFCFile file, List<List<XYZ>> triangleList)
       {
          List<XYZ> vertList = new List<XYZ>();
+         TriangleMergeUtil.vectorCompare vertComparer = new TriangleMergeUtil.vectorCompare();
+         IDictionary<XYZ, int> vertListIdxDict = new Dictionary<XYZ, int>(vertComparer);
          IList<IList<double>> coordList = new List<IList<double>>();
          IList<IList<int>> triIndex = new List<IList<int>>();
 
@@ -3070,12 +3071,14 @@ namespace Revit.IFC.Export.Utility
             {
                int idx = -1;
 
-               idx = vertList.FindIndex(x => x.IsAlmostEqualTo(vert));
-               if (idx < 0)
+               //idx = vertList.FindIndex(x => x.IsAlmostEqualTo(vert));
+               //if (idx < 0)
+               if (!vertListIdxDict.TryGetValue(vert, out idx))
                {
                   // Point not found, insert the point into the list
                   vertList.Add(vert);
                   idx = vertList.Count - 1; // Since the item is added at the end of the list, the index will be the last item in the List
+                  vertListIdxDict.Add(vert, idx);
                }
 
                tri.Add((idx) + 1); //!!! The index starts at 1 (and not 0) following X3D standard
@@ -3820,7 +3823,7 @@ namespace Revit.IFC.Export.Utility
 
                   innerCurves.Add(innerCurveHandle);
                }
-               extrudedAreaProfile = IFCInstanceExporter.CreateArbitraryProfileDefWithVoids(exporterIFC.GetFile(), IFCProfileType.Curve, profileName, curveHandle,
+               extrudedAreaProfile = IFCInstanceExporter.CreateArbitraryProfileDefWithVoids(exporterIFC.GetFile(), IFCProfileType.Area, profileName, curveHandle,
                   innerCurves);
             }
 

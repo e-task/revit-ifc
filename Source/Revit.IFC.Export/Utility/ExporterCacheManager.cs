@@ -77,6 +77,7 @@ namespace Revit.IFC.Export.Utility
       /// </summary>
       static ClassificationLocationCache m_ClassificationLocationCache;
 
+      static ClassificationReferenceCache m_ClassificationReferenceCache;
       /// <summary>
       /// The ContainmentCache object.
       /// </summary>
@@ -404,6 +405,11 @@ namespace Revit.IFC.Export.Utility
       static IDictionary<Tuple<string, string>, string> m_PropertyMapCache;
 
       /// <summary>
+      /// The CertifiedEntitiesAndPsetCache
+      /// </summary>
+      static IFCCertifiedEntitiesAndPSets m_CertifiedEntitiesAndPsetCache;
+
+      /// <summary>
       /// The ParameterCache object.
       /// </summary>
       public static AllocatedGeometryObjectCache AllocatedGeometryObjectCache
@@ -553,10 +559,10 @@ namespace Revit.IFC.Export.Utility
          }
       }
 
-/// <summary>
-/// The ParameterCache object.
-/// </summary>
-public static ParameterCache ParameterCache
+      /// <summary>
+      /// The ParameterCache object.
+      /// </summary>
+      public static ParameterCache ParameterCache
       {
          get
          {
@@ -1060,6 +1066,17 @@ public static ParameterCache ParameterCache
          set { m_ClassificationLocationCache = value; }
       }
 
+      public static ClassificationReferenceCache ClassificationReferenceCache
+      {
+         get
+         {
+            if (m_ClassificationReferenceCache == null)
+               m_ClassificationReferenceCache = new ClassificationReferenceCache();
+            return m_ClassificationReferenceCache;
+         }
+         set { m_ClassificationReferenceCache = value; }
+      }
+
       /// <summary>
       /// The UnitsCache object.
       /// </summary>
@@ -1284,6 +1301,20 @@ public static ParameterCache ParameterCache
       }
 
       /// <summary>
+      /// The CertifiedEntitiesAndPsetCache
+      /// </summary>
+      public static IFCCertifiedEntitiesAndPSets CertifiedEntitiesAndPsetsCache
+      {
+         get
+         {
+            if (m_CertifiedEntitiesAndPsetCache == null)
+               m_CertifiedEntitiesAndPsetCache = new IFCCertifiedEntitiesAndPSets();
+
+            return m_CertifiedEntitiesAndPsetCache;
+         }
+      }
+
+      /// <summary>
       /// Clear all caches contained in this manager.
       /// </summary>
       public static void Clear()
@@ -1302,6 +1333,7 @@ public static ParameterCache ParameterCache
          m_CeilingSpaceRelCache = null;
          m_ClassificationCache = null;
          m_ClassificationLocationCache = null;
+         m_ClassificationReferenceCache = null;
          m_ConditionalPropertySetsForTypeCache = null;
          m_ContainmentCache = null;
          m_CurveAnnotationCache = null;
@@ -1359,6 +1391,7 @@ public static ParameterCache ParameterCache
          m_ZoneCache = null;
          m_ZoneInfoCache = null;
          BuildingHandle = null;
+         m_CertifiedEntitiesAndPsetCache = null;
       }
    }
 }

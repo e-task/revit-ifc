@@ -92,7 +92,7 @@ namespace Revit.IFC.Export.Utility
                IFCAnyHandle ownerHistory = ExporterCacheManager.OwnerHistoryHandle;
                string openingName = NamingUtil.GetIFCNamePlusIndex(element, openingNumber++);
                IFCAnyHandle openingElement = IFCInstanceExporter.CreateOpeningElement(exporterIFC, element, guid, ownerHistory,
-                  openingPlacement, openingRep, allowTag: false);
+                  openingPlacement, openingRep);
                IFCAnyHandleUtil.OverrideNameAttribute(openingElement, openingName);
                IFCAnyHandleUtil.SetAttribute(openingElement, "ObjectType", openingObjectType);
                wrapper.AddElement(null, openingElement, setter, extraParams, true);
@@ -222,11 +222,13 @@ namespace Revit.IFC.Export.Utility
             if (openingElem == null)
                openingElem = element;
 
+            bool currentWallIsHost = false;
             FamilyInstance openingFInst = openingElem as FamilyInstance;
             if (openingFInst != null && openingFInst.Host != null)
             {
-               if (openingFInst.Host.Id != element.Id)
-                  continue;      // If the host is not the current Wall, skip this opening
+               if (openingFInst.Host.Id == element.Id)
+                  currentWallIsHost = true;
+                  //continue;      // If the host is not the current Wall, skip this opening
             }
 
             // Don't export the opening if WallSweep category has been turned off.
@@ -247,7 +249,7 @@ namespace Revit.IFC.Export.Utility
                parentHandle = elementHandles[0];
 
             bool isDoorOrWindowOpening = IsDoorOrWindowOpening(exporterIFC, openingElem, element);
-            if (isDoorOrWindowOpening)
+            if (isDoorOrWindowOpening && currentWallIsHost)
             {
                DoorWindowDelayedOpeningCreator delayedCreator =
                    DoorWindowDelayedOpeningCreator.Create(exporterIFC, openingData, scaledWidth, element.Id, parentHandle, setter.LevelId);
@@ -381,7 +383,7 @@ namespace Revit.IFC.Export.Utility
          }
 
          IFCAnyHandle openingHnd = IFCInstanceExporter.CreateOpeningElement(exporterIFC, hostElement, openingGUID, ownerHistory,
-            openingPlacement, prodRep, allowTag: false);
+            openingPlacement, prodRep);
          IFCAnyHandleUtil.OverrideNameAttribute(openingHnd, openingName);
          IFCAnyHandleUtil.SetAttribute(openingHnd, "ObjectType", openingObjectType);
          if (ExporterCacheManager.ExportOptionsCache.ExportBaseQuantities)
@@ -444,7 +446,7 @@ namespace Revit.IFC.Export.Utility
          if (string.IsNullOrEmpty(openingName))
             openingName = NamingUtil.GetNameOverride(hostElement, NamingUtil.CreateIFCObjectName(exporterIFC, hostElement));
          IFCAnyHandle openingHnd = IFCInstanceExporter.CreateOpeningElement(exporterIFC, null, openingGUID, ownerHistory,
-             ExporterUtil.CreateLocalPlacement(file, hostPlacement, null), openingProdRepHnd, allowTag: false);
+             ExporterUtil.CreateLocalPlacement(file, hostPlacement, null), openingProdRepHnd);
          IFCAnyHandleUtil.OverrideNameAttribute(openingHnd, openingName);
          IFCAnyHandleUtil.SetAttribute(openingHnd, "ObjectType", openingObjectType);
          IFCExtrusionCreationData ecData = null;
@@ -495,7 +497,7 @@ namespace Revit.IFC.Export.Utility
             Element instHost = (openingElem as FamilyInstance).Host;
             return (exportType.ExportInstance == IFCEntityType.IfcDoor || exportType.ExportType == IFCEntityType.IfcDoorType 
                || exportType.ExportInstance == IFCEntityType.IfcWindow || exportType.ExportType == IFCEntityType.IfcWindowType) &&
-                (instHost != null && instHost.Id == hostElement.Id);
+                (instHost != null/* && instHost.Id == hostElement.Id*/);
          }
 
          return false;

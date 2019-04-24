@@ -37,7 +37,7 @@ namespace Revit.IFC.Export.Toolkit
    {
       RelContainedInSpatialStructure = 1,
       RelAggregatesProducts = 2,
-      RelAggregatesBuildingStoreys = 3
+      RelAggregatesBuildingStories = 3
    }
 
    enum IFCBuildingStoreySubElements
@@ -161,9 +161,13 @@ namespace Revit.IFC.Export.Toolkit
 
    enum IFCWindowSubElements
    {
+      WindowLining = IFCDoorSubElements.DoorLining,
+      WindowPanelStart = IFCDoorSubElements.DoorPanelStart,
+      WindowPanelEnd = IFCDoorSubElements.DoorPanelEnd,
       WindowOpening = IFCDoorSubElements.DoorOpening,
       WindowOpeningRelVoid = IFCDoorSubElements.DoorOpeningRelVoid,
       WindowStyle = IFCDoorSubElements.DoorStyle,
+      WindowType = IFCDoorSubElements.DoorType
    }
 
    enum IFCZoneSubElements

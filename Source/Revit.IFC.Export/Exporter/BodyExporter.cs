@@ -1965,22 +1965,23 @@ namespace Revit.IFC.Export.Exporter
          IList<int> colourIndex = new List<int>();
 
          // If the geomObject is GeometryELement or GeometryInstance, we need to collect their primitive Solid and Mesh first
+         bool allNotToBeExported = false;
          List<GeometryObject> geomObjectPrimitives = new List<GeometryObject>();
          if (geomObject is GeometryElement)
          {
-            geomObjectPrimitives.AddRange(GetGeometryObjectListFromGeometryElement(geomObject as GeometryElement));
+            geomObjectPrimitives.AddRange(GetGeometryObjectListFromGeometryElement(document, exporterIFC, geomObject as GeometryElement, out allNotToBeExported));
          }
          else if (geomObject is GeometryInstance)
          {
             GeometryInstance geomInst = geomObject as GeometryInstance;
-            geomObjectPrimitives.AddRange(GetGeometryObjectListFromGeometryElement(geomInst.GetInstanceGeometry()));
+            geomObjectPrimitives.AddRange(GetGeometryObjectListFromGeometryElement(document, exporterIFC, geomInst.GetInstanceGeometry(), out allNotToBeExported));
          }
          else if (geomObject is Solid)
             geomObjectPrimitives.Add(geomObject);
          else if (geomObject is Mesh)
             geomObjectPrimitives.Add(geomObject);
 
-         // At this point all collected geometry will only contains Solid and/or MEsh
+         // At this point all collected geometry will only contains Solid and/or Mesh
          foreach (GeometryObject geom in geomObjectPrimitives)
          {
             if (geom is Solid)
@@ -2037,7 +2038,8 @@ namespace Revit.IFC.Export.Exporter
                   IFCAnyHandle triangulatedMesh = ExportSurfaceAsTriangulatedFaceSet(exporterIFC, element, options, geomObject, trfToUse);
                   if (polygonalFaceSetList == null)
                      polygonalFaceSetList = new List<IFCAnyHandle>();
-                  polygonalFaceSetList.Add(triangulatedMesh);
+                  if (!IFCAnyHandleUtil.IsNullOrHasNoValue(triangulatedMesh))
+                     polygonalFaceSetList.Add(triangulatedMesh);
                }
             }
             else if (geom is Mesh)
@@ -2046,11 +2048,10 @@ namespace Revit.IFC.Export.Exporter
                IList<IList<double>> coordList = new List<IList<double>>();
 
                // Collect all the vertices first from the component
-               for (int jj = 0; jj < mesh.Vertices.Count; ++jj)
+               foreach (XYZ vertex in mesh.Vertices)
                {
                   List<double> vertCoord = new List<double>();
 
-                  XYZ vertex = mesh.Vertices[jj];
                   XYZ vertexScaled = ExporterIFCUtils.TransformAndScalePoint(exporterIFC, vertex);
 
                   vertCoord.Add(vertexScaled.X);
@@ -2075,13 +2076,14 @@ namespace Revit.IFC.Export.Exporter
             }
          }
 
-         if (polygonalFaceSetList == null || polygonalFaceSetList.Count == 0)
+         if ((polygonalFaceSetList == null || polygonalFaceSetList.Count == 0) && !allNotToBeExported)
          {
             // It is not from Solid, so we will use the faces to export. It works for Surface export too
             IFCAnyHandle triangulatedMesh = ExportSurfaceAsTriangulatedFaceSet(exporterIFC, element, options, geomObject, trfToUse);
             if (polygonalFaceSetList == null)
                polygonalFaceSetList = new List<IFCAnyHandle>();
-            polygonalFaceSetList.Add(triangulatedMesh);
+            if (!IFCAnyHandleUtil.IsNullOrHasNoValue(triangulatedMesh))
+               polygonalFaceSetList.Add(triangulatedMesh);
          }
 
          return polygonalFaceSetList;
@@ -2092,14 +2094,13 @@ namespace Revit.IFC.Export.Exporter
       /// </summary>
       /// <param name="geomElement">the GeometryElement</param>
       /// <returns>list of Solid and/or Mesh</returns>
-      private static List<GeometryObject> GetGeometryObjectListFromGeometryElement(GeometryElement geomElement)
+      private static List<GeometryObject> GetGeometryObjectListFromGeometryElement(Document doc, ExporterIFC exporterIFC, GeometryElement geomElement, out bool allNotToBeExported)
       {
          List<GeometryObject> geomObjectPrimitives = new List<GeometryObject>();
          SolidMeshGeometryInfo solidMeshCapsule = GeometryUtil.GetSplitSolidMeshGeometry(geomElement);
-         foreach (Solid solid in solidMeshCapsule.GetSolids())
-            geomObjectPrimitives.Add(solid);
-         foreach (Mesh mesh in solidMeshCapsule.GetMeshes())
-            geomObjectPrimitives.Add(mesh);
+         int initialSolidMeshCount = solidMeshCapsule.GetSolids().Count + solidMeshCapsule.GetMeshes().Count;
+         geomObjectPrimitives = FamilyExporterUtil.RemoveInvisibleSolidsAndMeshes(doc, exporterIFC, solidMeshCapsule.GetSolids(), solidMeshCapsule.GetMeshes());
+         allNotToBeExported = initialSolidMeshCount > 0 && geomObjectPrimitives.Count == 0;
 
          return geomObjectPrimitives;
       }
@@ -2205,21 +2206,33 @@ namespace Revit.IFC.Export.Exporter
          IList<int> colourIndex = new List<int>();
 
          // We need to collect all SOlids and Meshes from the GeometryObject if it is of types GeometryElement or GeometryInstance
+         bool allNotToBeExported = false;
          List<GeometryObject> geomObjectPrimitives = new List<GeometryObject>();
          if (geomObject is GeometryElement)
          {
-            geomObjectPrimitives.AddRange(GetGeometryObjectListFromGeometryElement(geomObject as GeometryElement));
+            geomObjectPrimitives.AddRange(GetGeometryObjectListFromGeometryElement(document, exporterIFC, geomObject as GeometryElement, out allNotToBeExported));
          }
          else if (geomObject is GeometryInstance)
          {
             GeometryInstance geomInst = geomObject as GeometryInstance;
-            geomObjectPrimitives.AddRange(GetGeometryObjectListFromGeometryElement(geomInst.GetInstanceGeometry()));
+            geomObjectPrimitives.AddRange(GetGeometryObjectListFromGeometryElement(document, exporterIFC, geomInst.GetInstanceGeometry(), out allNotToBeExported));
          }
          else if (geomObject is Solid)
-            geomObjectPrimitives.Add(geomObject);
+         {
+            IList<GeometryObject> visibleSolids = FamilyExporterUtil.RemoveInvisibleSolidsAndMeshes(document, exporterIFC, new List<Solid>() { geomObject as Solid }, null);
+            if (visibleSolids != null && visibleSolids.Count > 0)
+               geomObjectPrimitives.AddRange(visibleSolids);
+            else
+               allNotToBeExported = true;
+         }
          else if (geomObject is Mesh)
-            geomObjectPrimitives.Add(geomObject);
-
+         {
+            IList<GeometryObject> visibleMeshes = FamilyExporterUtil.RemoveInvisibleSolidsAndMeshes(document, exporterIFC, null, new List<Mesh>() { geomObject as Mesh });
+            if (visibleMeshes != null && visibleMeshes.Count > 0)
+               geomObjectPrimitives.AddRange(visibleMeshes);
+            else
+               allNotToBeExported = true;
+         }
          // At this point the collection will only contains Solids and/or Meshes. Loop through each of them
          foreach (GeometryObject geom in geomObjectPrimitives)
          {
@@ -2299,8 +2312,9 @@ namespace Revit.IFC.Export.Exporter
                catch
                {
                   // Failed! Likely because of the tessellation failed. Try to create from the faceset instead
-                  IFCAnyHandle triangulatedMesh = ExportSurfaceAsTriangulatedFaceSet(exporterIFC, element, options, geomObject);
-                  triangulatedBodyList.Add(triangulatedMesh);
+                  IFCAnyHandle triangulatedMesh = ExportSurfaceAsTriangulatedFaceSet(exporterIFC, element, options, geomObject, lcs);
+                  if (!IFCAnyHandleUtil.IsNullOrHasNoValue(triangulatedMesh))
+                     triangulatedBodyList.Add(triangulatedMesh);
                }
             }
             else if (geom is Mesh)
@@ -2317,11 +2331,9 @@ namespace Revit.IFC.Export.Exporter
                   IList<IList<int>> coordIdx = new List<IList<int>>();
 
                   // create list of vertices first.
-                  for (int ii = 0; ii < numberOfVertices; ii++)
+                  foreach(XYZ vertex in mesh.Vertices)
                   {
                      List<double> vertCoord = new List<double>();
-
-                     XYZ vertex = mesh.Vertices[ii];
                      XYZ vertexScaled = ExporterIFCUtils.TransformAndScalePoint(exporterIFC, vertex);
 
                      vertCoord.Add(vertexScaled.X);
@@ -2365,11 +2377,12 @@ namespace Revit.IFC.Export.Exporter
             }
          }
 
-         if (triangulatedBodyList == null || triangulatedBodyList.Count == 0)
+         if ((triangulatedBodyList == null || triangulatedBodyList.Count == 0) && !allNotToBeExported)
          {
             // It is not from Solid, so we will use the faces to export. It works for Surface export too
-            IFCAnyHandle triangulatedMesh = ExportSurfaceAsTriangulatedFaceSet(exporterIFC, element, options, geomObject);
-            triangulatedBodyList.Add(triangulatedMesh);
+            IFCAnyHandle triangulatedMesh = ExportSurfaceAsTriangulatedFaceSet(exporterIFC, element, options, geomObject, lcs);
+            if (!IFCAnyHandleUtil.IsNullOrHasNoValue(triangulatedMesh))
+               triangulatedBodyList.Add(triangulatedMesh);
          }
 
          return triangulatedBodyList;
@@ -2383,11 +2396,11 @@ namespace Revit.IFC.Export.Exporter
       /// <param name="options">the options</param>
       /// <param name="geomObject">geometry objects</param>
       /// <returns>returns a handle</returns>
-      public static IFCAnyHandle ExportBodyAsTessellatedFaceSet(ExporterIFC exporterIFC, Element element, BodyExporterOptions options,
+      public static IList<IFCAnyHandle> ExportBodyAsTessellatedFaceSet(ExporterIFC exporterIFC, Element element, BodyExporterOptions options,
                   GeometryObject geomObject, Transform lcs = null)
       {
          IList<IFCAnyHandle> tessellatedBodyList = null;
-         IFCAnyHandle tessellatedBody = null;
+         //IFCAnyHandle tessellatedBody = null;
 
          if (ExporterCacheManager.ExportOptionsCache.ExportAs4_ADD2 && !ExporterCacheManager.ExportOptionsCache.UseOnlyTriangulation)
          {
@@ -2399,10 +2412,11 @@ namespace Revit.IFC.Export.Exporter
          }
 
          // We only handle one shell for now
-         if (tessellatedBodyList != null && tessellatedBodyList.Count > 0)
-            tessellatedBody = tessellatedBodyList[0];
+         //if (tessellatedBodyList != null && tessellatedBodyList.Count > 0)
+         //   tessellatedBody = tessellatedBodyList[0];
 
-         return tessellatedBody;
+         //return tessellatedBody;
+         return tessellatedBodyList;
       }
 
       /// <summary>
@@ -2556,7 +2570,7 @@ namespace Revit.IFC.Export.Exporter
                      IList<IFCAnyHandle> vertexHandles = new List<IFCAnyHandle>();
                      HashSet<IFCAnyHandle> currentFaceSet = new HashSet<IFCAnyHandle>();
 
-                     if (ExporterCacheManager.ExportOptionsCache.ExportAs4ReferenceView)
+                     if (ExporterCacheManager.ExportOptionsCache.ExportAs4ReferenceView || ExporterCacheManager.ExportOptionsCache.ExportAs4General)
                      {
                         List<List<double>> coordList = new List<List<double>>();
 
@@ -2675,7 +2689,7 @@ namespace Revit.IFC.Export.Exporter
          int numGeoms = selectiveBRepExport ? numBRepsToExport : splitGeometryList.Count;
 
          bool canExportAsAdvancedGeometry = ExporterCacheManager.ExportOptionsCache.ExportAs4DesignTransferView;
-         bool canExportAsTessellatedFaceSet = ExporterCacheManager.ExportOptionsCache.ExportAs4ReferenceView;
+         bool canExportAsTessellatedFaceSet = ExporterCacheManager.ExportOptionsCache.ExportAs4ReferenceView || ExporterCacheManager.ExportOptionsCache.ExportAs4General;
 
          // We will cycle through all of the geometries one at a time, doing the best export we can for each.
          for (int index = 0; index < numGeoms; index++)
@@ -2742,11 +2756,11 @@ namespace Revit.IFC.Export.Exporter
             if (!alreadyExported && canExportAsTessellatedFaceSet)
             {
                Transform trfToUse = GeometryUtil.GetScaledTransform(exporterIFC);
-               //IFCAnyHandle triangulatedBodyItem = ExportBodyAsTessellatedFaceSet(exporterIFC, element, options, geomObject, bodyData.OffsetTransform);
-               IFCAnyHandle triangulatedBodyItem = ExportBodyAsTessellatedFaceSet(exporterIFC, element, options, geomObject, trfToUse);
-               if (!IFCAnyHandleUtil.IsNullOrHasNoValue(triangulatedBodyItem))
+               IList<IFCAnyHandle> triangulatedBodyItems = ExportBodyAsTessellatedFaceSet(exporterIFC, element, options, geomObject, trfToUse);
+               if (triangulatedBodyItems != null && triangulatedBodyItems.Count > 0)
                {
-                  bodyItems.Add(triangulatedBodyItem);
+                  foreach (IFCAnyHandle triangulatedBodyItem in triangulatedBodyItems)
+                     bodyItems.Add(triangulatedBodyItem);
                   alreadyExported = true;
                   hasTriangulatedGeometry = true;
                }
@@ -3098,7 +3112,9 @@ namespace Revit.IFC.Export.Exporter
          // we will try to see if we can use an optimized BRep created from a swept solid.
          bool allowExportAsOptimizedBRep = (options.TessellationLevel == BodyExporterOptions.BodyTessellationLevel.Coarse ||
             ExporterCacheManager.ExportOptionsCache.LevelOfDetail < ExportOptionsCache.ExportTessellationLevel.High);
-         bool allowAdvancedBReps = ExporterCacheManager.ExportOptionsCache.ExportAs4 && !ExporterCacheManager.ExportOptionsCache.ExportAs4ReferenceView;
+         bool allowAdvancedBReps = ExporterCacheManager.ExportOptionsCache.ExportAs4 
+                                    && !ExporterCacheManager.ExportOptionsCache.ExportAs4ReferenceView
+                                    && !ExporterCacheManager.ExportOptionsCache.ExportAs4General;
 
          // We will try to export as a swept solid if the option is set, and we are either exporting to a schema that allows it,
          // or we are using a coarse tessellation, in which case we will export the swept solid as an optimzed BRep.
@@ -3339,10 +3355,11 @@ namespace Revit.IFC.Export.Exporter
                               XYZ extrusionDirection = extrusionLists[ii][0].ExtrusionDirection;
                               if (options.CollectFootprintHandle)
                               {
-                                 // Must Check correctness for transform!!!!!
                                  FootPrintInfo fInfo = new FootPrintInfo();
                                  fInfo.LCSTransformUsed = bodyData.OffsetTransform;
-                                 fInfo.FootPrintHandle = GeometryUtil.CreateIFCCurveFromCurveLoop(exporterIFC, curveLoops[0], fInfo.LCSTransformUsed, fInfo.LCSTransformUsed.BasisZ);
+                                 XYZ projDir;
+                                 projDir = fInfo.LCSTransformUsed.BasisZ;
+                                 fInfo.FootPrintHandle = GeometryUtil.CreateIFCCurveFromCurveLoop(exporterIFC, curveLoops[0], fInfo.LCSTransformUsed, projDir);
                                  footprintInfoSet.Add(fInfo);
                               }
                               if (options.CollectMaterialAndProfile)
@@ -3685,10 +3702,11 @@ namespace Revit.IFC.Export.Exporter
             if (meshes.Count == 0)
             {
                IList<Solid> solidList = info.GetSolids();
-               foreach (Solid solid in solidList)
-               {
-                  geomList.Add(solid);
-               }
+               geomList = FamilyExporterUtil.RemoveInvisibleSolidsAndMeshes(element.Document, exporterIFC, solidList, null);
+               //foreach (Solid solid in solidList)
+               //{
+               //   geomList.Add(solid);
+               //}
             }
          }
 

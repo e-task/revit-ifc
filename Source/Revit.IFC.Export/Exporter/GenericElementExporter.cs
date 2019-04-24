@@ -31,15 +31,19 @@ namespace Revit.IFC.Export.Exporter
 
          // Check the intended IFC entity or type name is in the exclude list specified in the UI
          if (exportType.ExportInstance == IFCEntityType.UnKnown)
-            exportType.ExportInstance = IFCEntityType.IfcBuildingElementProxy;
+            exportType.SetValueWithPair(IFCEntityType.IfcBuildingElementProxy, exportType.ValidatedPredefinedType);
          if (ExporterCacheManager.ExportOptionsCache.IsElementInExcludeList(exportType.ExportInstance))
             return null;
+
+         // Check for containment override
+         IFCAnyHandle overrideContainerHnd = null;
+         ElementId overrideContainerId = ParameterUtil.OverrideContainmentParameter(exporterIFC, element, out overrideContainerHnd);
 
          IFCFile file = exporterIFC.GetFile();
          IFCAnyHandle instanceHandle = null;
          using (IFCTransaction tr = new IFCTransaction(file))
          {
-            using (PlacementSetter placementSetter = PlacementSetter.Create(exporterIFC, element))
+            using (PlacementSetter placementSetter = PlacementSetter.Create(exporterIFC, element, null, null, overrideContainerId, overrideContainerHnd))
             {
                using (IFCExtrusionCreationData ecData = new IFCExtrusionCreationData())
                {
@@ -62,6 +66,9 @@ namespace Revit.IFC.Export.Exporter
                   IFCAnyHandle localPlacement = ecData.GetLocalPlacement();
                   IFCAnyHandle styleHandle = null;
 
+                  instanceHandle = FamilyExporterUtil.ExportGenericInstance(exportType, exporterIFC, element, productWrapper, placementSetter, ecData, guid, ownerHistory,
+                     representation, exportType.ValidatedPredefinedType, null);
+
                   if (exportType.ExportType != IFCEntityType.UnKnown)
                   {
                      if (element is FamilyInstance)
@@ -80,12 +87,9 @@ namespace Revit.IFC.Export.Exporter
                         styleHandle = ExporterUtil.CreateGenericTypeFromElement(element, exportType, file, ownerHistory, exportType.ValidatedPredefinedType, productWrapper);
                   }
 
-                  instanceHandle = FamilyExporterUtil.ExportGenericInstance(exportType, exporterIFC, element, productWrapper, placementSetter, ecData, guid, ownerHistory, 
-                     representation, exportType.ValidatedPredefinedType, null);
-
                   if (!IFCAnyHandleUtil.IsNullOrHasNoValue(instanceHandle))
                   {
-                     productWrapper.AddElement(element, instanceHandle, placementSetter.LevelInfo, ecData, true);
+                     productWrapper.AddElement(element, instanceHandle, placementSetter.LevelInfo, ecData, true, exportType);
                      if (!IFCAnyHandleUtil.IsNullOrHasNoValue(styleHandle))
                         ExporterCacheManager.TypeRelationsCache.Add(styleHandle, instanceHandle);
                   }

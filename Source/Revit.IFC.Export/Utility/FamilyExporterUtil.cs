@@ -275,7 +275,7 @@ namespace Revit.IFC.Export.Exporter
                      localPlacementToUse, productRepresentation, preDefinedType);
 
                   // Register the members's IFC handle for later use by truss export.
-                  ExporterCacheManager.ElementToHandleCache.Register(familyInstance.Id, instanceHandle);
+                  ExporterCacheManager.ElementToHandleCache.Register(familyInstance.Id, instanceHandle, type);
                   break;
                }
             case IFCEntityType.IfcPlate:
@@ -469,42 +469,39 @@ namespace Revit.IFC.Export.Exporter
          IFCExportInfoPair exportInfo = exportType;
          string typeAsString = exportType.ExportType.ToString();
 
-         if (ExporterCacheManager.ExportOptionsCache.ExportAs4)
+         if (ExporterCacheManager.ExportOptionsCache.ExportAsOlderThanIFC4)
+         {
+            // Handle special cases for upward compatibility
+            switch (exportType.ExportType)
+            {
+               case Common.Enums.IFCEntityType.IfcBurnerType:
+                  exportInfo.SetValueWithPair(Common.Enums.IFCEntityType.IfcGasTerminalType, ifcEnumType);
+                  break;
+               case Common.Enums.IFCEntityType.IfcDoorType:
+                  exportInfo.SetValueWithPair(Common.Enums.IFCEntityType.IfcDoorStyle, ifcEnumType);
+                  break;
+               case Common.Enums.IFCEntityType.IfcWindowType:
+                  exportInfo.SetValueWithPair(Common.Enums.IFCEntityType.IfcWindowStyle, ifcEnumType);
+                  break;
+            }
+         }
+         else
          {
             // Handle special cases of backward compatibility
             switch (exportType.ExportType)
             {
                // For compatibility with IFC2x3 and before. IfcGasTerminalType has been removed and IfcBurnerType replaces it in IFC4
                case Common.Enums.IFCEntityType.IfcGasTerminalType:
-                  exportInfo.ExportType = Common.Enums.IFCEntityType.IfcBurnerType;
+                  exportInfo.SetValueWithPair(Common.Enums.IFCEntityType.IfcBurnerType, ifcEnumType);
                   break;
                // For compatibility with IFC2x3 and before. IfcElectricHeaterType has been removed and IfcSpaceHeaterType replaces it in IFC4
                case Common.Enums.IFCEntityType.IfcElectricHeaterType:
-                  exportInfo.ExportType = Common.Enums.IFCEntityType.IfcSpaceHeaterType;
-                  break;
-            }
-         }
-         else
-         {
-            // Handle special cases for upward compatibility
-            switch (exportType.ExportType)
-            {
-               case Common.Enums.IFCEntityType.IfcBurnerType:
-                  exportInfo.ExportType = Common.Enums.IFCEntityType.IfcGasTerminalType;
-                  break;
-               case Common.Enums.IFCEntityType.IfcSpaceHeaterType:
-                  exportInfo.ExportType = Common.Enums.IFCEntityType.IfcElectricHeaterType;
-                  break;
-               case Common.Enums.IFCEntityType.IfcDoorType:
-                  exportInfo.ExportType = Common.Enums.IFCEntityType.IfcDoorStyle;
-                  break;
-               case Common.Enums.IFCEntityType.IfcWindowType:
-                  exportInfo.ExportType = Common.Enums.IFCEntityType.IfcWindowStyle;
+                  exportInfo.SetValueWithPair(Common.Enums.IFCEntityType.IfcSpaceHeaterType, ifcEnumType);
                   break;
             }
          }
 
-         return IFCInstanceExporter.CreateGenericIFCType(exportInfo, symbol, file, propertySets, representationMapList, ifcEnumType);
+         return IFCInstanceExporter.CreateGenericIFCType(exportInfo, symbol, file, propertySets, representationMapList);
       }
 
       /// <summary>
@@ -584,8 +581,10 @@ namespace Revit.IFC.Export.Exporter
       public static List<GeometryObject> RemoveInvisibleSolidsAndMeshes(Document doc, ExporterIFC exporterIFC, IList<Solid> solids, IList<Mesh> meshes)
       {
          List<GeometryObject> geomObjectsIn = new List<GeometryObject>();
-         geomObjectsIn.AddRange(solids);
-         geomObjectsIn.AddRange(meshes);
+         if (solids != null && solids.Count > 0)
+            geomObjectsIn.AddRange(solids);
+         if (meshes != null && meshes.Count > 0)
+            geomObjectsIn.AddRange(meshes);
 
          List<GeometryObject> geomObjectsOut = new List<GeometryObject>();
 

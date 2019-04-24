@@ -50,7 +50,11 @@ namespace Revit.IFC.Export.Exporter
 
          using (IFCTransaction tr = new IFCTransaction(file))
          {
-            using (PlacementSetter setter = PlacementSetter.Create(exporterIFC, element))
+            // Check for containment override
+            IFCAnyHandle overrideContainerHnd = null;
+            ElementId overrideContainerId = ParameterUtil.OverrideContainmentParameter(exporterIFC, element, out overrideContainerHnd);
+
+            using (PlacementSetter setter = PlacementSetter.Create(exporterIFC, element, null, null, overrideContainerId, overrideContainerHnd))
             {
                using (IFCExtrusionCreationData ecData = new IFCExtrusionCreationData())
                {
@@ -86,9 +90,19 @@ namespace Revit.IFC.Export.Exporter
 
                   string instanceGUID = GUIDUtil.CreateGUID(element);
                   //string pileType = IFCValidateEntry.GetValidIFCPredefinedType(element, ifcEnumType);
+                  IFCExportInfoPair exportInfo = new IFCExportInfoPair();
+                  exportInfo.ValidatedPredefinedType = ifcEnumType;
+                  exportInfo.SetValueWithPair(Common.Enums.IFCEntityType.IfcPile, ifcEnumType);
 
                   IFCAnyHandle pile = IFCInstanceExporter.CreatePile(exporterIFC, element, instanceGUID, ExporterCacheManager.OwnerHistoryHandle,
                       ecData.GetLocalPlacement(), prodRep, ifcEnumType, null);
+
+                  // TODO: to allow shared geometry for Piles. For now, Pile export will not use shared geometry
+                  if (exportInfo.ExportType != Common.Enums.IFCEntityType.UnKnown)
+                  {
+                     IFCAnyHandle type = ExporterUtil.CreateGenericTypeFromElement(element, exportInfo, file, ExporterCacheManager.OwnerHistoryHandle, exportInfo.ValidatedPredefinedType, productWrapper);
+                     ExporterCacheManager.TypeRelationsCache.Add(type, pile);
+                  }
 
                   if (exportParts)
                   {
@@ -102,7 +116,7 @@ namespace Revit.IFC.Export.Exporter
                      }
                   }
 
-                  productWrapper.AddElement(element, pile, setter, ecData, true);
+                  productWrapper.AddElement(element, pile, setter, ecData, true, exportInfo);
 
                   OpeningUtil.CreateOpeningsIfNecessary(pile, element, ecData, null,
                       exporterIFC, ecData.GetLocalPlacement(), setter, productWrapper);

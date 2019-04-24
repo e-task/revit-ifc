@@ -300,8 +300,8 @@ namespace Revit.IFC.Export.Exporter
             partExportLevelId = hostElement.LevelId;
          }
 
-         if (ExporterCacheManager.PartExportedCache.HasExported(partElement.Id, partExportLevelId))
-            return;
+         //if (ExporterCacheManager.PartExportedCache.HasExported(partElement.Id, partExportLevelId))
+         //   return;
 
          Options options = GeometryUtil.GetIFCExportGeometryOptions();
          View ownerView = partElement.Document.GetElement(partElement.OwnerViewId) as View;
@@ -321,11 +321,30 @@ namespace Revit.IFC.Export.Exporter
                if (standaloneExport)
                {
                   Transform orientationTrf = Transform.Identity;
-                  standalonePlacementSetter = PlacementSetter.Create(exporterIFC, partElement, null, orientationTrf, partExportLevelId);
+                  IFCAnyHandle overrideContainerHnd = null;
+                  ElementId overrideContainerId = ParameterUtil.OverrideContainmentParameter(exporterIFC, partElement, out overrideContainerHnd);
+                  if (overrideContainerId != ElementId.InvalidElementId && (partExportLevelId == null || partExportLevelId == ElementId.InvalidElementId))
+                     partExportLevelId = overrideContainerId;
+
+                  standalonePlacementSetter = PlacementSetter.Create(exporterIFC, partElement, null, orientationTrf, partExportLevelId, overrideContainerHnd);
                   partPlacement = standalonePlacementSetter.LocalPlacement;
                }
                else
                {
+                  // This part needs explaination:
+                  // The geometry of the Part is against the Project base, while the host element already contains all the IFC transforms relative to its container
+                  // To "correct" the placement so that the Part is correctly relative to the host, we need to inverse transform the Part to the host's placement 
+                  IFCAnyHandle hostHandle = ExporterCacheManager.ElementToHandleCache.Find(hostElement.Id);
+                  if (!IFCAnyHandleUtil.IsNullOrHasNoValue(hostHandle))
+                  {
+                     if (originalPlacement == null)
+                     {
+                        originalPlacement = IFCAnyHandleUtil.GetObjectPlacement(hostHandle);
+                     }
+                     Transform hostTrf = ExporterUtil.GetTransformFromLocalPlacementHnd(originalPlacement);
+                     hostTrf = ExporterUtil.UnscaleTransformOrigin(hostTrf);
+                     geometryElement = GeometryUtil.GetTransformedGeometry(geometryElement, hostTrf.Inverse);
+                  }
                   partPlacement = ExporterUtil.CreateLocalPlacement(file, originalPlacement, null);
                }
 
@@ -349,8 +368,16 @@ namespace Revit.IFC.Export.Exporter
                   extrusionCreationData.ReuseLocalPlacement = false;
                   extrusionCreationData.PossibleExtrusionAxes = ifcExtrusionAxes;
 
-                  IList<Solid> solids = solidMeshInfo.GetSolids();
-                  IList<Mesh> meshes = solidMeshInfo.GetMeshes();
+                  IList<Solid> solids = new List<Solid>(); ;
+                  IList<Mesh> meshes = new List<Mesh>();
+                  IList<GeometryObject> gObjs = FamilyExporterUtil.RemoveInvisibleSolidsAndMeshes(partElement.Document, exporterIFC, solidMeshInfo.GetSolids(), solidMeshInfo.GetMeshes());
+                  foreach (GeometryObject gObj in gObjs)
+                  {
+                     if (gObj is Solid)
+                        solids.Add(gObj as Solid);
+                     else if (gObj is Mesh)
+                        meshes.Add(gObj as Mesh);
+                  }
 
                   ElementId catId = CategoryUtil.GetSafeCategoryId(partElement);
                   ElementId hostCatId = CategoryUtil.GetSafeCategoryId(hostElement);
@@ -389,7 +416,8 @@ namespace Revit.IFC.Export.Exporter
                   IFCAnyHandle ownerHistory = ExporterCacheManager.OwnerHistoryHandle;
 
                   string partGUID = GUIDUtil.CreateGUID(partElement);
-
+                  string ifcEnumType = null;
+                  IFCExportInfoPair exportType = ExporterUtil.GetExportType(exporterIFC, hostElement, out ifcEnumType);
                   IFCAnyHandle ifcPart = null;
                   if (!asBuildingElement)
                   {
@@ -397,10 +425,7 @@ namespace Revit.IFC.Export.Exporter
                          extrusionCreationData.GetLocalPlacement(), prodRep);
                   }
                   else
-                  {
-                     string ifcEnumType = null;
-                     IFCExportInfoPair exportType = ExporterUtil.GetExportType(exporterIFC, hostElement, out ifcEnumType);
-                     
+                  {                   
                      switch (exportType.ExportInstance)
                      {
                         case IFCEntityType.IfcColumn:
@@ -444,20 +469,20 @@ namespace Revit.IFC.Export.Exporter
                            break;
                         default:
                            ifcPart = IFCInstanceExporter.CreateBuildingElementProxy(exporterIFC, partElement, partGUID, ownerHistory,
-                               extrusionCreationData.GetLocalPlacement(), prodRep, null);
+                               extrusionCreationData.GetLocalPlacement(), prodRep, exportType.ValidatedPredefinedType);
                            break;
                      }
                   }
 
                   bool containedInLevel = standaloneExport;
                   PlacementSetter whichPlacementSetter = containedInLevel ? standalonePlacementSetter : placementSetter;
-                  productWrapper.AddElement(partElement, ifcPart, whichPlacementSetter, extrusionCreationData, containedInLevel);
+                  productWrapper.AddElement(partElement, ifcPart, whichPlacementSetter, extrusionCreationData, containedInLevel, exportType);
 
                   OpeningUtil.CreateOpeningsIfNecessary(ifcPart, partElement, extrusionCreationData, bodyData.OffsetTransform, exporterIFC,
                       extrusionCreationData.GetLocalPlacement(), whichPlacementSetter, productWrapper);
 
                   //Add the exported part to exported cache.
-                  TraceExportedParts(partElement, partExportLevelId, standaloneExport ? ElementId.InvalidElementId : hostElement.Id);
+                  //TraceExportedParts(partElement, partExportLevelId, standaloneExport ? ElementId.InvalidElementId : hostElement.Id);
 
                   CategoryUtil.CreateMaterialAssociation(exporterIFC, ifcPart, bodyData.MaterialIds);
 
@@ -482,11 +507,11 @@ namespace Revit.IFC.Export.Exporter
       {
          if (!ExporterCacheManager.PartExportedCache.HasRegistered(partElement.Id))
          {
-            Dictionary<ElementId, ElementId> hostOverideLevels = new Dictionary<ElementId, ElementId>();
+            Dictionary<ElementId, ElementId> hostOverrideLevels = new Dictionary<ElementId, ElementId>();
 
-            if (!hostOverideLevels.ContainsKey(partExportLevel))
-               hostOverideLevels.Add(partExportLevel, hostElementId);
-            ExporterCacheManager.PartExportedCache.Register(partElement.Id, hostOverideLevels);
+            if (!hostOverrideLevels.ContainsKey(partExportLevel))
+               hostOverrideLevels.Add(partExportLevel, hostElementId);
+            ExporterCacheManager.PartExportedCache.Register(partElement.Id, hostOverrideLevels);
          }
          else
          {
@@ -719,7 +744,7 @@ namespace Revit.IFC.Export.Exporter
          BoundingBoxXYZ boundingBox = part.get_BoundingBox(null);
 
          // The levels should have been sorted.
-         IList<ElementId> levelIds = ExporterCacheManager.LevelInfoCache.BuildingStoreysByElevation;
+         IList<ElementId> levelIds = ExporterCacheManager.LevelInfoCache.BuildingStoriesByElevation;
          // Find the nearest bottom level.
          foreach (ElementId levelId in levelIds)
          {

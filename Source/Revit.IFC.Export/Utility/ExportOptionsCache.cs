@@ -189,8 +189,8 @@ namespace Revit.IFC.Export.Utility
          cache.ExportBaseQuantities = exporterIFC.ExportBaseQuantities;
          cache.WallAndColumnSplitting = exporterIFC.WallAndColumnSplitting;
          cache.SpaceBoundaryLevel = exporterIFC.SpaceBoundaryLevel;
-         // Export Part element only if 'Current View Only' is checked and 'Show Parts' is selected. 
-         cache.ExportParts = filterView != null && filterView.PartsVisibility == PartsVisibility.ShowPartsOnly;
+         // Export Part element only if 'Current View Only' is checked and 'Show Parts' is selected. Or if it is exported as IFC4RV
+         cache.ExportParts = (filterView != null && filterView.PartsVisibility == PartsVisibility.ShowPartsOnly);
          cache.ExportPartsAsBuildingElementsOverride = null;
          //cache.ExportAllLevels = false;
          cache.ExportAnnotationsOverride = null;
@@ -730,6 +730,18 @@ namespace Revit.IFC.Export.Utility
          get
          {
             return (FileVersion == IFCVersion.IFC4DTV);
+         }
+      }
+
+      /// <summary>
+      /// Option to be used for general IFC4 export (not specific to RV or DTV MVDs). Useful when there is a need to export entities that are not strictly valid within RV or DTV
+      /// It should work like IFC2x3, except that it will use IFC4 tessellated geometry instead of IFC2x3 BREP
+      /// </summary>
+      public bool ExportAs4General
+      {
+         get
+         {
+            return (FileVersion == IFCVersion.IFC4);
          }
       }
 

@@ -51,25 +51,15 @@ namespace Revit.IFC.Common.Utility
       /// </returns>
       public static bool IsAlmostEqual(double d1, double d2)
       {
-         double sum = Math.Abs(d1) + Math.Abs(d2);
-         if (sum < Eps())
-            return true;
-         return (Math.Abs(d1 - d2) <= sum * Eps());
+         return IsAlmostEqual(d1, d2, Eps());
       }
 
-      /// <summary>
-      /// Check if two double variables are almost equal within a specified tolerance
-      /// </summary>
-      /// <param name="d1">1st number</param>
-      /// <param name="d2">2nd number</param>
-      /// <returns></returns>
-      public static bool IsAlmostEqual(double d1, double d2, double tol)
+      public static bool IsAlmostEqual(double d1, double d2, double eps)
       {
-         double diff = Math.Abs(d1 - d2);
-         if (diff < tol)
+         double sum = Math.Abs(d1) + Math.Abs(d2);
+         if (sum < eps)
             return true;
-         else
-            return false;
+         return (Math.Abs(d1 - d2) <= sum * eps);
       }
 
       /// <summary>

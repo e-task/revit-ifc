@@ -454,6 +454,15 @@ namespace Revit.IFC.Export.Toolkit
    }
 
    /// <summary>
+   /// Enumeration defining the functional type of space 
+   /// </summary>
+   public enum IFCSpaceType
+   {
+      USERDEFINED,
+      NOTDEFINED
+   }
+
+   /// <summary>
    /// Defines the range of different types of sensor that can be specified.
    /// </summary>
    public enum IFCSensorType
@@ -926,6 +935,25 @@ namespace Revit.IFC.Export.Toolkit
    }
 
    /// <summary>
+   /// Enumeration defining the typical types of IfcElectricDistributionPoint
+   /// Note: that this is a little bit of a "HACK" because the code can only check enumeration name [IfcEntity] or [IfcEntityType] and this one is IfcElectricDistributionPointFunction
+   /// </summary>
+   public enum IfcElectricDistributionPointType
+   {
+      ALARMPANEL,
+      CONSUMERUNIT,
+      CONTROLPANEL,
+      DISTRIBUTIONBOARD,
+      GASDETECTORPANEL,
+      INDICATORPANEL,
+      MIMICPANEL,
+      MOTORCONTROLCENTRE,
+      SWITCHBOARD,
+      USERDEFINED,
+      NOTDEFINED
+   }
+
+   /// <summary>
    /// Enumeration defining the typical types of duct silencers.
    /// </summary>
    public enum IFCDuctSilencerType
@@ -1235,9 +1263,7 @@ namespace Revit.IFC.Export.Toolkit
    {
       Beam,
       Joist,
-      Hollowcore,
       Lintel,
-      Spandrel,
       T_Beam,
       UserDefined,
       NotDefined
@@ -1249,7 +1275,6 @@ namespace Revit.IFC.Export.Toolkit
    public enum IFCColumnType
    {
       Column,
-      Pilaster,
       UserDefined,
       NotDefined
    }
@@ -1681,6 +1706,17 @@ namespace Revit.IFC.Export.Toolkit
    }
 
    /// <summary>
+   /// Defines the basic configuration of the ramp flight in term of different ramp flight shapes.
+   /// </summary>
+   public enum IFCRampFlightType
+   {
+      Straight,
+      Spiral,
+      UserDefined,
+      NotDefined
+   }
+
+   /// <summary>
    /// Defines the basic configuration of the stairs in terms of the different stair shapes. 
    /// </summary>
    public enum IFCStairType
@@ -1837,6 +1873,14 @@ namespace Revit.IFC.Export.Toolkit
    {
       UserDefined,
       NotDefined
+   }
+
+   public enum IfcVibrationIsolatorType
+   {
+      COMPRESSION,
+      SPRING,
+      USERDEFINED,
+      NOTDEFINED
    }
 
    /// <summary>

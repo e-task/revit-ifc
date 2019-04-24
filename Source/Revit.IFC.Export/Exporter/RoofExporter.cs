@@ -53,7 +53,11 @@ namespace Revit.IFC.Export.Exporter
 
          using (IFCTransaction tr = new IFCTransaction(file))
          {
-            using (PlacementSetter placementSetter = PlacementSetter.Create(exporterIFC, roof))
+            // Check for containment override
+            IFCAnyHandle overrideContainerHnd = null;
+            ElementId overrideContainerId = ParameterUtil.OverrideContainmentParameter(exporterIFC, roof, out overrideContainerHnd);
+
+            using (PlacementSetter placementSetter = PlacementSetter.Create(exporterIFC, roof, null, null, overrideContainerId, overrideContainerHnd))
             {
                using (IFCExtrusionCreationData ecData = new IFCExtrusionCreationData())
                {
@@ -107,7 +111,7 @@ namespace Revit.IFC.Export.Exporter
                      ExporterCacheManager.TypeRelationsCache.Add(typeHnd, roofHnd);
                   }
 
-                  productWrapper.AddElement(roof, roofHnd, placementSetter.LevelInfo, ecData, true);
+                  productWrapper.AddElement(roof, roofHnd, placementSetter.LevelInfo, ecData, true, exportInfo);
 
                   // will export its host object materials later if it is a roof
                   if (!(roof is RoofBase))
@@ -133,7 +137,7 @@ namespace Revit.IFC.Export.Exporter
 
                      // Create type
                      IFCExportInfoPair slabRoofExportType = new IFCExportInfoPair();
-                     slabRoofExportType.SetValueWithPair(IFCEntityType.IfcSlab);
+                     slabRoofExportType.SetValueWithPair(IFCEntityType.IfcSlab, slabRoofPredefinedType);
                      IFCAnyHandle slabRoofTypeHnd = ExporterUtil.CreateGenericTypeFromElement(roof, slabRoofExportType, exporterIFC.GetFile(), ownerHistory, slabRoofPredefinedType, productWrapper);
                      ExporterCacheManager.TypeRelationsCache.Add(slabRoofTypeHnd, slabHnd);
                   }
@@ -216,7 +220,11 @@ namespace Revit.IFC.Export.Exporter
 
          using (IFCTransaction transaction = new IFCTransaction(file))
          {
-            using (PlacementSetter setter = PlacementSetter.Create(exporterIFC, element))
+            // Check for containment override
+            IFCAnyHandle overrideContainerHnd = null;
+            ElementId overrideContainerId = ParameterUtil.OverrideContainmentParameter(exporterIFC, element, out overrideContainerHnd);
+
+            using (PlacementSetter setter = PlacementSetter.Create(exporterIFC, element, null, null, overrideContainerId, overrideContainerHnd))
             {
                IFCAnyHandle localPlacement = setter.LocalPlacement;
                IList<HostObjectSubcomponentInfo> hostObjectSubcomponents = null;
@@ -235,6 +243,9 @@ namespace Revit.IFC.Export.Exporter
                int numSubcomponents = hostObjectSubcomponents.Count;
                if (numSubcomponents == 0 || (elementIsFloor && numSubcomponents == 1))
                   return null;
+
+
+               IFCAnyHandle hostObjectHandle = null;
 
                try
                {
@@ -256,7 +267,6 @@ namespace Revit.IFC.Export.Exporter
 
                         //string hostObjectType = IFCValidateEntry.GetValidIFCPredefinedType(element, ifcEnumType);
 
-                        IFCAnyHandle hostObjectHandle = null;
                         if (elementIsRoof)
                            hostObjectHandle = IFCInstanceExporter.CreateRoof(exporterIFC, element, elementGUID, ownerHistory,
                             localPlacement, prodRepHnd, ifcEnumType);
@@ -307,7 +317,10 @@ namespace Revit.IFC.Export.Exporter
                               double scaledExtrusionDepth = scaledDepth * slope;
                               IFCAnyHandle shapeRep = ExtrusionExporter.CreateExtrudedSolidFromCurveLoop(exporterIFC, null, curveLoops, lcs, extrusionDir, scaledExtrusionDepth, false);
                               if (IFCAnyHandleUtil.IsNullOrHasNoValue(shapeRep))
+                              {
+                                 productWrapper.ClearInternalHandleWrapperData(element);
                                  return null;
+                              }
 
                               ElementId matId = HostObjectExporter.GetFirstLayerMaterialId(element as HostObject);
                               BodyExporter.CreateSurfaceStyleForRepItem(exporterIFC, element.Document, shapeRep, matId);
@@ -355,6 +368,12 @@ namespace Revit.IFC.Export.Exporter
                      }
                   }
                }
+               catch
+               {
+                  // SOmething wrong with the above process, unable to create the extrusion data. Reset any internal handles that may have been partially created since they are not committed
+                  productWrapper.ClearInternalHandleWrapperData(element);
+                  return null;
+               }
                finally
                {
                   exporterIFC.ClearFaceWithElementHandleMap();
@@ -381,7 +400,11 @@ namespace Revit.IFC.Export.Exporter
 
          using (IFCTransaction transaction = new IFCTransaction(file))
          {
-            using (PlacementSetter setter = PlacementSetter.Create(exporterIFC, element))
+            // Check for containment override
+            IFCAnyHandle overrideContainerHnd = null;
+            ElementId overrideContainerId = ParameterUtil.OverrideContainmentParameter(exporterIFC, element, out overrideContainerHnd);
+
+            using (PlacementSetter setter = PlacementSetter.Create(exporterIFC, element, null, null, overrideContainerId, overrideContainerHnd))
             {
                IFCAnyHandle ownerHistory = ExporterCacheManager.OwnerHistoryHandle;
                IFCAnyHandle localPlacement = setter.LocalPlacement;

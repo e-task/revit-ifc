@@ -65,6 +65,7 @@ namespace Revit.IFC.Export.Exporter
             string name = NamingUtil.GetNameOverride(element, NamingUtil.GetIFCName(element));
             string description = NamingUtil.GetDescriptionOverride(element, null);
             string objectType = NamingUtil.GetObjectTypeOverride(element, NamingUtil.GetFamilyAndTypeName(element));
+            string longName = NamingUtil.GetLongNameOverride(element, null);
 
             string ifcEnumType;
             IFCExportInfoPair exportAs = ExporterUtil.GetExportType(exporterIFC, element, out ifcEnumType);
@@ -72,11 +73,15 @@ namespace Revit.IFC.Export.Exporter
             {
                groupHnd = IFCInstanceExporter.CreateGroup(file, guid, ownerHistory, name, description, objectType);
             }
+            else if (!ExporterCacheManager.ExportOptionsCache.ExportAsOlderThanIFC4 && exportAs.ExportInstance == IFCEntityType.IfcBuildingSystem)
+            {
+               groupHnd = IFCInstanceExporter.CreateBuildingSystem(file, exportAs, guid, ownerHistory, name, description, objectType, longName);
+            }
 
             if (groupHnd == null)
                return false;
 
-            productWrapper.AddElement(element, groupHnd);
+            productWrapper.AddElement(element, groupHnd, exportAs);
 
             ExporterCacheManager.GroupCache.RegisterGroup(element.Id, groupHnd);
 
