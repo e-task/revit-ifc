@@ -786,4 +786,7 @@
   <data name="UseOnlyTriangulation" xml:space="preserve">
     <value>Triangulation erzwingen</value>
   </data>
+  <data name="DoorBelongsToRoom" xml:space="preserve">
+    <value>Türen zu Räumen zuordnen</value>
+  </data>
 </root>

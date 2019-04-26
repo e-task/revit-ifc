@@ -792,4 +792,7 @@
   <data name="IFC4" xml:space="preserve">
     <value>IFC4 for General Use</value>
   </data>
+  <data name="DoorBelongsToRoom" xml:space="preserve">
+    <value>Relate doors to rooms</value>
+  </data>
 </root>

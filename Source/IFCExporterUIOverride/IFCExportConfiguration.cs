@@ -220,6 +220,8 @@ namespace BIM.IFC.Export.UI
       /// </summary>
       public string COBieProjectInfo { get; set; } = "";
 
+      public bool DoorBelongsToRoom { get; set; }
+
       /// <summary>
       /// Value indicating whether steel elements should be exported.
       /// </summary>
@@ -292,6 +294,7 @@ namespace BIM.IFC.Export.UI
          this.ExportSpecificSchedules = false;
          this.TessellationLevelOfDetail = 0.5;
          this.UseOnlyTriangulation = false;
+         this.DoorBelongsToRoom = false;
          this.StoreIFCGUID = false;
          this.m_isBuiltIn = false;
          this.m_isInSession = false;
@@ -361,6 +364,7 @@ namespace BIM.IFC.Export.UI
          configuration.TessellationLevelOfDetail = 0.5;
          configuration.UseOnlyTriangulation = false;
          configuration.StoreIFCGUID = false;
+         configuration.DoorBelongsToRoom = false;
          configuration.m_isBuiltIn = true;
          configuration.m_isInSession = false;
          configuration.ActivePhaseId = ElementId.InvalidElementId;
@@ -411,6 +415,7 @@ namespace BIM.IFC.Export.UI
          this.IncludeSiteElevation = other.IncludeSiteElevation;
          this.TessellationLevelOfDetail = other.TessellationLevelOfDetail;
          this.UseOnlyTriangulation = other.UseOnlyTriangulation;
+         this.DoorBelongsToRoom = other.DoorBelongsToRoom;
          this.StoreIFCGUID = other.StoreIFCGUID;
          this.m_isBuiltIn = other.m_isBuiltIn;
          this.m_isInSession = other.m_isInSession;
@@ -471,6 +476,7 @@ namespace BIM.IFC.Export.UI
          this.StoreIFCGUID = other.StoreIFCGUID;
          this.TessellationLevelOfDetail = other.TessellationLevelOfDetail;
          this.UseOnlyTriangulation = other.UseOnlyTriangulation;
+         this.DoorBelongsToRoom = other.DoorBelongsToRoom;
          this.ActivePhaseId = other.ActivePhaseId;
          this.ExportRoomsInView = other.ExportRoomsInView;
          this.m_isBuiltIn = false;
@@ -544,6 +550,7 @@ namespace BIM.IFC.Export.UI
          options.AddOption("SitePlacement", SitePlacement.ToString());
          options.AddOption("TessellationLevelOfDetail", TessellationLevelOfDetail.ToString());
          options.AddOption("UseOnlyTriangulation", UseOnlyTriangulation.ToString());
+         options.AddOption("DoorBelongsToRoom", DoorBelongsToRoom.ToString());
          options.AddOption("ActiveViewId", ActiveViewId.ToString());
          options.AddOption("StoreIFCGUID", StoreIFCGUID.ToString());
 
