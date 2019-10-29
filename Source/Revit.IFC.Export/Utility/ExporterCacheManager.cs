@@ -409,7 +409,22 @@ namespace Revit.IFC.Export.Utility
       /// </summary>
       static IFCCertifiedEntitiesAndPSets m_CertifiedEntitiesAndPsetCache;
 
-      static HashSet<IFCAnyHandle> m_HandleToDelete;
+
+      // ---------------------------------------------
+      // Jo64
+      static HashSet<IFCAnyHandle> m_DoorBelongsToRoomCache;
+      public static HashSet<IFCAnyHandle> DoorBelongsToRoomCache
+      {
+         get
+         {
+               if (m_DoorBelongsToRoomCache == null)
+                  m_DoorBelongsToRoomCache = new HashSet<IFCAnyHandle>();
+               return m_DoorBelongsToRoomCache;
+         }
+      }
+      // ---------------------------------------------
+
+        static HashSet<IFCAnyHandle> m_HandleToDelete;
 
       /// <summary>
       /// The ParameterCache object.

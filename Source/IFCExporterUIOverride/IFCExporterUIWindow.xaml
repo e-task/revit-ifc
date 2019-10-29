@@ -112,7 +112,8 @@
                <CheckBox Content="{x:Static p:Resources.UseOnlyTriangulation}" Margin="-74,167,0,100" Grid.ColumnSpan="5" x:Name="checkBox_TriangulationOnly" Checked="checkBox_TriangulationOnly_Checked" Unchecked="checkBox_TriangulationOnly_Unchecked" ToolTip="Use this option if any tessellated geometry should remain as triangulated faces, or if the export performance is affected"/>
                <CheckBox Content="{x:Static p:Resources.UseTypeNameOnlyForIfcType}" Margin="-74,187,0,80" Grid.ColumnSpan="5" x:Name="checkbox_UseTypeNameOnly" Checked="Checkbox_UseTypeNameOnly_Checked" Unchecked="Checkbox_UseTypeNameOnly_Unchecked" ToolTip="Use this option to export IfcType name to use only Revit type name without the family name"/>
                <CheckBox Content="{x:Static p:Resources.UseVisibleRevitNameAsEntityName}" Margin="-74,207,0,60" Grid.ColumnSpan="5" x:Name="checkbox_UseVisibleRevitNameAsEntityName" Checked="Checkbox_UseVisibleRevitName_Checked" Unchecked="Checkbox_UseVisibleRevitName_Unchecked" ToolTip="Use this option to export Ifc Entity name to use visible Revit name "/>
-            </Grid>
+                <CheckBox Content="{x:Static p:Resources.DoorBelongsToRoom}" Height="16" Margin="-74,227,0,40" Grid.ColumnSpan="5" x:Name="checkBox_DoorBelongsToRoom" Checked="CheckBox_DoorBelongsToRoom_Checked" Unchecked="CheckBox_DoorBelongsToRoom_Unchecked" ToolTip="Use this option if the door belongs to the room and not to the building storey" />
+                </Grid>
          </TabItem>
          <!--
          <TabItem Header="EntitiesToExport" HorizontalAlignment="Left" Height="20" VerticalAlignment="Top" Width="99" Margin="0.8,0,-16.6,0">

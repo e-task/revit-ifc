@@ -1746,5 +1746,16 @@ namespace BIM.IFC.Export.UI
          IFCExportConfiguration configuration = GetSelectedConfiguration();
          configuration.UseVisibleRevitNameAsEntityName = false;
       }
+
+      private void CheckBox_DoorBelongsToRoom_Checked(object sender, RoutedEventArgs e)
+      {
+         IFCExportConfiguration configuration = GetSelectedConfiguration();
+         configuration.DoorBelongsToRoom = true;
+      }
+      private void CheckBox_DoorBelongsToRoom_Unchecked(object sender, RoutedEventArgs e)
+      {
+         IFCExportConfiguration configuration = GetSelectedConfiguration();
+         configuration.DoorBelongsToRoom = false;
+      }
    }
 }
