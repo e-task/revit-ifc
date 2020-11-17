@@ -216,6 +216,8 @@ namespace BIM.IFC.Export.UI
       /// </summary>
       public string COBieCompanyInfo { get; set; } = "";
 
+      public bool DoorBelongsToRoom { get; set; } = false;
+
       /// <summary>
       /// COBie specific project information (from a dedicated tab)
       /// </summary>
@@ -340,6 +342,7 @@ namespace BIM.IFC.Export.UI
          // The default tesselationLevelOfDetail will be low
          configuration.TessellationLevelOfDetail = 0.5;
          configuration.UseOnlyTriangulation = false;
+         configuration.DoorBelongsToRoom = false;
          configuration.StoreIFCGUID = false;
          configuration.m_isBuiltIn = true;
          configuration.m_isInSession = false;
@@ -437,6 +440,7 @@ namespace BIM.IFC.Export.UI
          options.AddOption("SitePlacement", SitePlacement.ToString());
          options.AddOption("TessellationLevelOfDetail", TessellationLevelOfDetail.ToString());
          options.AddOption("UseOnlyTriangulation", UseOnlyTriangulation.ToString());
+         options.AddOption("DoorBelongsToRoom", DoorBelongsToRoom.ToString());
          options.AddOption("ActiveViewId", ActiveViewId.ToString());
          options.AddOption("StoreIFCGUID", StoreIFCGUID.ToString());
 

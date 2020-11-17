@@ -738,6 +738,9 @@
   <data name="KeepTessellatedAsTriangulation" xml:space="preserve">
     <value>Tesselierte Geomatrie als Triangulation beibehalten</value>
   </data>
+  <data name="DoorBelongsToRoom" xml:space="preserve">
+    <value>Türen zu Räumen zuordnen</value>
+  </data>
   <data name="LoadSetup" xml:space="preserve">
     <value>Einstellungen importieren…</value>
   </data>
