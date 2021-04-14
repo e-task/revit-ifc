@@ -18,9 +18,6 @@
 //
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.IFC;
 using Revit.IFC.Common.Utility;
@@ -35,38 +32,71 @@ namespace Revit.IFC.Import.Data
    /// </summary>
    public class IFCLocation : IFCEntity
    {
-      IFCLocation m_RelativeTo = null;
+      /// <summary>
+      /// Determines whether we should fix the origin of the IFCLocation
+      /// if it is too far from the origin for Revit's standards.
+      /// </summary>
+      private static bool FixFarawayLocationOrigin { get; set; } = false;
 
-      Transform m_RelativeTransform = Transform.Identity;
+      /// <summary>
+      /// A class that controls whether or not we should correct the IFCLocation
+      /// relative transform if it is too far from the origin for Revit's standards.
+      /// </summary>
+      /// <remarks>This class should be used with the 'using' keyword to scope
+      /// its effects.  In general, we shouldn't ever have to use this; IFC files
+      /// shouldn't be far from the origin, as CAD systems can have issues with
+      /// large coordinates.  Also, specifically for IfcSite, we set shared coordinates
+      /// based on the offset to avoid the issue.  For other containers, it is
+      /// more difficult to determine what to do.  So we will limit this to buildings
+      /// and building stories.</remarks>
+      public class IFCLocationChecker : IDisposable
+      {
+         /// <summary>
+         /// The constructor.
+         /// </summary>
+         public IFCLocationChecker(IFCProduct product)
+         {
+            LastFixFarawayLocationOrigin = FixFarawayLocationOrigin;
+            FixFarawayLocationOrigin = (product != null) &&
+               ((product is IFCBuilding) || (product is IFCBuildingStorey));
+         }
 
-      // This is not part of the IFC definition of an IfcLocation, but is necessary for Revit in case
-      // 1. The IfcSite has a non-identity IfcLocation and 
-      // 2. An objecthas an IfcLocation that is incorrectly not associated to IfcSite.
-      // We will warn about this but correct it.
-      bool m_RelativeToSite = false;
+         public void Dispose()
+         {
+            FixFarawayLocationOrigin = LastFixFarawayLocationOrigin;
+         }
+
+         private bool LastFixFarawayLocationOrigin { get; set; } = false;
+      }
+
+      /// <summary>
+      /// The IFCLocation that this IFCLocation is relative to. 
+      /// </summary>
+      public IFCLocation RelativeTo { get; set; } = null;
 
       /// <summary>
       /// The total transform.
       /// </summary>
       public Transform TotalTransform
       {
-         get { return m_RelativeTo != null ? m_RelativeTo.TotalTransform.Multiply(RelativeTransform) : RelativeTransform; }
+         get { return RelativeTo != null ? RelativeTo.TotalTransform.Multiply(RelativeTransform) : RelativeTransform; }
       }
 
       /// <summary>
       /// The relative transform.
       /// </summary>
-      public Transform RelativeTransform
-      {
-         get { return m_RelativeTransform; }
-         protected set { m_RelativeTransform = value; }
-      }
+      public Transform RelativeTransform { get; set; } = Transform.Identity;
 
-      public bool RelativeToSite
-      {
-         get { return m_RelativeToSite; }
-         set { m_RelativeToSite = value; }
-      }
+      /// <summary>
+      /// Determines if this IfcLocation is relative to the IfcSite's location.
+      /// </summary>
+      /// <remarks>
+      /// This is not part of the IFC definition of an IfcLocation, but is necessary for Revit in case
+      /// 1. The IfcSite has a non-identity IfcLocation and 
+      /// 2. An object has an IfcLocation that is incorrectly not associated to IfcSite.
+      /// We will warn about this but correct it.
+      /// </remarks>
+      public bool RelativeToSite { get; set; } = false;
 
       /// <summary>
       /// Default constructor.
@@ -88,7 +118,18 @@ namespace Revit.IFC.Import.Data
       static Transform ProcessPlacementBase(IFCAnyHandle placement)
       {
          IFCAnyHandle location = IFCAnyHandleUtil.GetInstanceAttribute(placement, "Location");
-         return Transform.CreateTranslation(IFCPoint.ProcessScaledLengthIFCCartesianPoint(location));
+         XYZ origin = IFCPoint.ProcessScaledLengthIFCCartesianPoint(location);
+         if (origin == null)
+         {
+            Importer.TheLog.LogError(placement.StepId, "Missing or invalid location attribute.", false);
+            origin = XYZ.Zero;
+         }
+         else if (FixFarawayLocationOrigin && !XYZ.IsWithinLengthLimits(origin))
+         {
+            Importer.TheLog.LogError(placement.StepId, "The local placement has an origin that is outside of Revit's creation limits.  Moving to the internal origin.", false);
+            origin = XYZ.Zero;
+         }
+         return Transform.CreateTranslation(origin);
       }
 
       static Transform ProcessAxis2Placement2D(IFCAnyHandle placement)
@@ -112,9 +153,21 @@ namespace Revit.IFC.Import.Data
          IFCAnyHandle refDirection = IFCAnyHandleUtil.GetInstanceAttribute(placement, "RefDirection");
 
          XYZ axisXYZ = IFCAnyHandleUtil.IsNullOrHasNoValue(axis) ?
-             XYZ.BasisZ : IFCPoint.ProcessNormalizedIFCDirection(axis);
+             XYZ.BasisZ : IFCPoint.ProcessNormalizedIFCDirection(axis, false);
          XYZ refDirectionXYZ = IFCAnyHandleUtil.IsNullOrHasNoValue(refDirection) ?
-             XYZ.BasisX : IFCPoint.ProcessNormalizedIFCDirection(refDirection);
+             XYZ.BasisX : IFCPoint.ProcessNormalizedIFCDirection(refDirection, false);
+
+         if (axisXYZ.IsZeroLength())
+         {
+            Importer.TheLog.LogError(axis.StepId, "Local transform contains 0 length axis vector, reverting to Z-axis.", false);
+            axisXYZ = XYZ.BasisZ;
+         }
+         if (refDirectionXYZ.IsZeroLength())
+         {
+            Importer.TheLog.LogError(refDirection.StepId, "Local transform contains 0 length reference vector, reverting to X-axis.", false);
+            refDirectionXYZ = XYZ.BasisX;
+         }
+
          Transform lcs = ProcessPlacementBase(placement);
 
          XYZ lcsX = (refDirectionXYZ - refDirectionXYZ.DotProduct(axisXYZ) * axisXYZ).Normalize();
@@ -122,7 +175,7 @@ namespace Revit.IFC.Import.Data
 
          if (lcsX.IsZeroLength() || lcsY.IsZeroLength())
          {
-            Importer.TheLog.LogError(placement.StepId, "Local transform contains 0 length vectors", true);
+            Importer.TheLog.LogError(placement.StepId, "Local transform contains 0 length vectors.", true);
          }
 
          lcs.BasisX = lcsX;
@@ -145,7 +198,7 @@ namespace Revit.IFC.Import.Data
          if (IFCImportFile.TheFile.TransformMap.TryGetValue(ifcPlacement.StepId, out transform))
             return transform;
 
-         if (!IFCAnyHandleUtil.IsSubTypeOf(ifcPlacement, IFCEntityType.IfcAxis1Placement))
+         if (!IFCAnyHandleUtil.IsValidSubTypeOf(ifcPlacement, IFCEntityType.IfcAxis1Placement))
          {
             Importer.TheLog.LogUnhandledSubTypeError(ifcPlacement, "IfcAxis1Placement", false);
             transform = Transform.Identity;
@@ -179,9 +232,9 @@ namespace Revit.IFC.Import.Data
          if (IFCImportFile.TheFile.TransformMap.TryGetValue(ifcPlacement.StepId, out transform))
             return transform;
 
-         if (IFCAnyHandleUtil.IsSubTypeOf(ifcPlacement, IFCEntityType.IfcAxis2Placement2D))
+         if (IFCAnyHandleUtil.IsValidSubTypeOf(ifcPlacement, IFCEntityType.IfcAxis2Placement2D))
             transform = ProcessAxis2Placement2D(ifcPlacement);
-         else if (IFCAnyHandleUtil.IsSubTypeOf(ifcPlacement, IFCEntityType.IfcAxis2Placement3D))
+         else if (IFCAnyHandleUtil.IsValidSubTypeOf(ifcPlacement, IFCEntityType.IfcAxis2Placement3D))
             transform = ProcessAxis2Placement3D(ifcPlacement);
          else
          {
@@ -193,21 +246,61 @@ namespace Revit.IFC.Import.Data
          return transform;
       }
 
-      override protected void Process(IFCAnyHandle objectPlacement)
+      protected void ProcessLocalPlacement(IFCAnyHandle objectPlacement)
       {
-         base.Process(objectPlacement);
-
          IFCAnyHandle placementRelTo = IFCAnyHandleUtil.GetInstanceAttribute(objectPlacement, "PlacementRelTo");
          IFCAnyHandle relativePlacement = IFCAnyHandleUtil.GetInstanceAttribute(objectPlacement, "RelativePlacement");
 
-         m_RelativeTo =
-             IFCAnyHandleUtil.IsNullOrHasNoValue(placementRelTo) ? null : ProcessIFCObjectPlacement(placementRelTo);
+         // We don't want to fix any previous object placement that we either already fixed,
+         // or decided not to fix.
+         using (IFCLocationChecker dontFix = new IFCLocationChecker(null))
+         {
+            RelativeTo =
+                IFCAnyHandleUtil.IsNullOrHasNoValue(placementRelTo) ? null : ProcessIFCObjectPlacement(placementRelTo);
+         }
+
          RelativeTransform = ProcessIFCAxis2Placement(relativePlacement);
 
          // If the location that this is relative to is relative to the site location, then so is this.
          // This relies on RelativeToSite for the IfcSite local placement to be set to true before any other entities are processed.
-         if (m_RelativeTo != null)
-            RelativeToSite = m_RelativeTo.RelativeToSite;
+         if (RelativeTo != null)
+            RelativeToSite = RelativeTo.RelativeToSite;
+      }
+
+      protected void ProcessGridPlacement(IFCAnyHandle gridPlacement)
+      {
+         Importer.TheCache.PreProcessGrids();
+
+         IFCAnyHandle placementLocation = IFCImportHandleUtil.GetRequiredInstanceAttribute(gridPlacement, "PlacementLocation", true);
+
+         IFCVirtualGridIntersection virtualGridIntersection = IFCVirtualGridIntersection.ProcessIFCVirtualGridIntersection(placementLocation);
+
+         IFCAnyHandle placementRefDirection = IFCAnyHandleUtil.GetInstanceAttribute(gridPlacement, "PlacementRefDirection");
+
+         if (!IFCAnyHandleUtil.IsNullOrHasNoValue(placementRefDirection))
+         {
+            // TODO: Handle later, if we see examples of use.
+            Importer.TheLog.LogError(gridPlacement.Id, "placementRefDirection attribute not handled.", false);
+         }
+ 
+         RelativeTransform = virtualGridIntersection.LocalCoordinateSystem;
+      }
+
+      protected override void Process(IFCAnyHandle objectPlacement)
+      {
+         base.Process(objectPlacement);
+
+         // Various TODOs here.
+         // 1. We should create IFCLocalPlacement and IFCGridPlacement, and have them inherit
+         //    from IFCLocation.
+         // 2. IFCGridPlacement and IFCVirtualGridIntersection implementation is incomplete; 
+         //    we will let the user know if they get to an unsupported case. 
+         if (IFCAnyHandleUtil.IsValidSubTypeOf(objectPlacement, IFCEntityType.IfcLocalPlacement))
+            ProcessLocalPlacement(objectPlacement);
+         else if (IFCAnyHandleUtil.IsValidSubTypeOf(objectPlacement, IFCEntityType.IfcGridPlacement))
+            ProcessGridPlacement(objectPlacement);
+         else
+            Importer.TheLog.LogUnhandledSubTypeError(objectPlacement, "IfcObjectPlacement", false);         
       }
 
       /// <summary>
@@ -227,11 +320,7 @@ namespace Revit.IFC.Import.Data
          if (IFCImportFile.TheFile.EntityMap.TryGetValue(ifcObjectPlacement.StepId, out location))
             return (location as IFCLocation);
 
-         if (IFCAnyHandleUtil.IsSubTypeOf(ifcObjectPlacement, IFCEntityType.IfcLocalPlacement))
-            return new IFCLocation(ifcObjectPlacement);
-
-         //LOG: ERROR: Not processed object placement.
-         return new IFCLocation();
+         return new IFCLocation(ifcObjectPlacement);
       }
 
       /// <summary>

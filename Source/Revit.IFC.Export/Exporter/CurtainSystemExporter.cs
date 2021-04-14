@@ -54,16 +54,7 @@ namespace Revit.IFC.Export.Exporter
          if (wallElement == null)
             return;
 
-         string overrideCADLayer = null;
-         if (ParameterUtil.GetStringValueFromElementOrSymbol(wallElement, "IFCCadLayer", out overrideCADLayer) == null 
-            || string.IsNullOrWhiteSpace(overrideCADLayer))
-         {
-            if ((ParameterUtil.GetStringValueFromElementOrSymbol(wallElement, "IfcPresentationLayer", out overrideCADLayer) == null) 
-               || string.IsNullOrWhiteSpace(overrideCADLayer))
-            {
-               overrideCADLayer = ExporterStateManager.GetCurrentCADLayerOverride();
-            }
-         }
+         string overrideCADLayer = RepresentationUtil.GetPresentationLayerOverride(wallElement);
 
          using (ExporterStateManager.CADLayerOverrideSetter layerSetter = new ExporterStateManager.CADLayerOverrideSetter(overrideCADLayer))
          {
@@ -160,7 +151,7 @@ namespace Revit.IFC.Export.Exporter
                         }
                         else if (subElem is Wall)
                         {
-                           WallExporter.ExportWall(exporterIFC, null, subElem, null, geomElem, productWrapper);
+                           WallExporter.ExportWall(exporterIFC, null, subElem, null, ref geomElem, productWrapper);
                         }
                      }
                      catch (Exception ex)

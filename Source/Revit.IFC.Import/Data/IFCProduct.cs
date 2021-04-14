@@ -19,13 +19,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.IFC;
 using Revit.IFC.Common.Enums;
 using Revit.IFC.Common.Utility;
-using Revit.IFC.Import.Enums;
 using Revit.IFC.Import.Geometry;
 using Revit.IFC.Import.Utility;
 
@@ -36,10 +33,6 @@ namespace Revit.IFC.Import.Data
    /// </summary>
    public abstract class IFCProduct : IFCObject
    {
-      protected int m_TypeId = 0;
-
-      private IFCLocation m_ObjectLocation = null;
-
       protected IFCProductRepresentation m_ProductRepresentation = null;
 
       protected IFCSpatialStructureElement m_ContainingStructure = null;
@@ -57,10 +50,7 @@ namespace Revit.IFC.Import.Data
       /// <summary>
       /// The id of the corresponding IfcTypeProduct, if any.
       /// </summary>
-      public int TypeId
-      {
-         get { return m_TypeId; }
-      }
+      public int TypeId { get; protected set; } = 0;
 
       /// <summary>
       /// The list of solids created for the associated element.
@@ -136,11 +126,7 @@ namespace Revit.IFC.Import.Data
       /// <summary>
       /// The local coordinate system of the IfcProduct.
       /// </summary>
-      public IFCLocation ObjectLocation
-      {
-         get { return m_ObjectLocation; }
-         protected set { m_ObjectLocation = value; }
-      }
+      public IFCLocation ObjectLocation { get; protected set; } = null;
 
       /// <summary>
       /// Default constructor.
@@ -179,6 +165,8 @@ namespace Revit.IFC.Import.Data
 
          if (element != null)
          {
+            Category category = IFCPropertySet.GetCategoryForParameterIfValid(element, Id);
+
             // Set "IfcPresentationLayer" parameter.
             string ifcPresentationLayer = null;
             foreach (string currLayer in PresentationLayerNames)
@@ -193,12 +181,12 @@ namespace Revit.IFC.Import.Data
             }
 
             if (ifcPresentationLayer != null)
-               IFCPropertySet.AddParameterString(doc, element, "IfcPresentationLayer", ifcPresentationLayer, Id);
+               IFCPropertySet.AddParameterString(doc, element, category, "IfcPresentationLayer", ifcPresentationLayer, Id);
 
             // Set the container name of the element.
             string containerName = (ContainingStructure != null) ? ContainingStructure.Name : null;
             if (containerName != null)
-               IFCPropertySet.AddParameterString(doc, element, "IfcSpatialContainer", containerName, Id);
+               IFCPropertySet.AddParameterString(doc, element, category, "IfcSpatialContainer", containerName, Id);
          }
       }
 
@@ -240,6 +228,46 @@ namespace Revit.IFC.Import.Data
          }
 
          return false;
+      }
+
+      /// <summary>
+      /// Cut a IFCSolidInfo by the voids in this IFCProduct, if any.
+      /// </summary>
+      /// <param name="solidInfo">The solid information.</param>
+      /// <returns>False if the return solid is empty; true otherwise.</returns>
+      protected override bool CutSolidByVoids(IFCSolidInfo solidInfo)
+      {
+         int numVoids = Voids.Count;
+         if (numVoids == 0)
+            return true;
+
+         // We only cut body representation items.
+         if (solidInfo.RepresentationType != IFCRepresentationIdentifier.Body)
+            return true;
+
+         if (!(solidInfo.GeometryObject is Solid))
+         {
+            string typeName = (solidInfo.GeometryObject is Mesh) ? "mesh" : "instance";
+            Importer.TheLog.LogError(Id, "Can't cut " + typeName + " geometry, ignoring " + numVoids + " void(s).", false);
+            return true;
+         }
+
+         for (int voidIdx = 0; voidIdx < numVoids; voidIdx++)
+         {
+            Solid voidObject = Voids[voidIdx].GeometryObject as Solid;
+            if (voidObject == null)
+            {
+               Importer.TheLog.LogError(Id, "Can't cut Solid geometry with a Mesh (# " + Voids[voidIdx].Id + "), ignoring.", false);
+               return true;
+            }
+
+            solidInfo.GeometryObject = IFCGeometryUtil.ExecuteSafeBooleanOperation(solidInfo.Id, Voids[voidIdx].Id,
+               (solidInfo.GeometryObject as Solid), voidObject, BooleanOperationsType.Difference, null);
+            if (solidInfo.GeometryObject == null || (solidInfo.GeometryObject as Solid).Faces.IsEmpty)
+               return false;
+         }
+
+         return true;
       }
 
       /// <summary>
@@ -309,36 +337,11 @@ namespace Revit.IFC.Import.Data
                   // Attempt to cut each solid with each void.
                   for (int solidIdx = 0; solidIdx < numSolids; solidIdx++)
                   {
-                     // We only cut body representation items.
-                     if (Solids[solidIdx].RepresentationType != IFCRepresentationIdentifier.Body)
-                        continue;
-
-                     if (!(Solids[solidIdx].GeometryObject is Solid))
+                     if (!CutSolidByVoids(Solids[solidIdx]))
                      {
-                        string typeName = (Solids[solidIdx].GeometryObject is Mesh) ? "mesh" : "instance";
-                        Importer.TheLog.LogError(Id, "Can't cut " + typeName + " geometry, ignoring " + numVoids + " void(s).", false);
-                        continue;
-                     }
-
-                     for (int voidIdx = 0; voidIdx < numVoids; voidIdx++)
-                     {
-                        if (!(Voids[voidIdx].GeometryObject is Solid))
-                        {
-                           Importer.TheLog.LogError(Id, "Can't cut Solid geometry with a Mesh (# " + Voids[voidIdx].Id + "), ignoring.", false);
-                           continue;
-                        }
-
-                        Solids[solidIdx].GeometryObject =
-                            IFCGeometryUtil.ExecuteSafeBooleanOperation(Solids[solidIdx].Id, Voids[voidIdx].Id,
-                                Solids[solidIdx].GeometryObject as Solid, Voids[voidIdx].GeometryObject as Solid,
-                                BooleanOperationsType.Difference, null);
-                        if ((Solids[solidIdx].GeometryObject as Solid).Faces.IsEmpty)
-                        {
-                           Solids.RemoveAt(solidIdx);
-                           solidIdx--;
-                           numSolids--;
-                           break;
-                        }
+                        Solids.RemoveAt(solidIdx);
+                        solidIdx--;
+                        numSolids--;
                      }
                   }
                }
@@ -428,8 +431,12 @@ namespace Revit.IFC.Import.Data
 
          if (!IFCAnyHandleUtil.IsNullOrHasNoValue(objectPlacement))
          {
-            ObjectLocation = IFCLocation.ProcessIFCObjectPlacement(objectPlacement);
-            IFCSite.ActiveSiteSetter.CheckObjectPlacementIsRelativeToSite(this, ifcProduct.StepId, objectPlacement.StepId);
+            using (IFCLocation.IFCLocationChecker checker = new IFCLocation.IFCLocationChecker(this))
+            {
+               ObjectLocation = IFCLocation.ProcessIFCObjectPlacement(objectPlacement);
+            }
+
+            IFCSite.ActiveSiteSetter.CheckObjectPlacementIsRelativeToSite(this, ifcProduct.StepId, objectPlacement);
          }
       }
 
@@ -452,16 +459,16 @@ namespace Revit.IFC.Import.Data
             if (IFCImportFile.TheFile.EntityMap.TryGetValue(ifcProduct.StepId, out cachedProduct))
                return (cachedProduct as IFCProduct);
 
-            if (IFCAnyHandleUtil.IsSubTypeOf(ifcProduct, IFCEntityType.IfcSpatialStructureElement))
+            if (IFCAnyHandleUtil.IsValidSubTypeOf(ifcProduct, IFCEntityType.IfcSpatialStructureElement))
                return IFCSpatialStructureElement.ProcessIFCSpatialStructureElement(ifcProduct);
 
-            if (IFCAnyHandleUtil.IsSubTypeOf(ifcProduct, IFCEntityType.IfcElement))
+            if (IFCAnyHandleUtil.IsValidSubTypeOf(ifcProduct, IFCEntityType.IfcElement))
                return IFCElement.ProcessIFCElement(ifcProduct);
 
-            if (IFCAnyHandleUtil.IsSubTypeOf(ifcProduct, IFCEntityType.IfcGrid))
+            if (IFCAnyHandleUtil.IsValidSubTypeOf(ifcProduct, IFCEntityType.IfcGrid))
                return IFCGrid.ProcessIFCGrid(ifcProduct);
 
-            if (IFCAnyHandleUtil.IsSubTypeOf(ifcProduct, IFCEntityType.IfcProxy))
+            if (IFCAnyHandleUtil.IsValidSubTypeOf(ifcProduct, IFCEntityType.IfcProxy))
                return IFCProxy.ProcessIFCProxy(ifcProduct);
          }
          catch (Exception ex)

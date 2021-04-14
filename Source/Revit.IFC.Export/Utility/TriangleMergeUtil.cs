@@ -18,11 +18,8 @@
 //
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Autodesk.Revit.DB;
 using System.Diagnostics;
 
@@ -36,19 +33,95 @@ namespace Revit.IFC.Export.Utility
       static TriangulatedShellComponent _geom;
       static Mesh _meshGeom;
       static IDictionary<int, XYZ> _meshVertices = new Dictionary<int, XYZ>();
-      
+
       HashSet<int> _mergedFaceList = new HashSet<int>();
 
       IDictionary<int, IndexFace> facesColl = new Dictionary<int, IndexFace>();
 
       // These two must be hand in hand
-      static double _tol = 1e-6;
-      static int _tolNoDecPrecision = 6;
-      // ------
+      public const double Tolerance = 1e-6;
 
-      //IDictionary<int, HashSet<int>> sortedFVert = new Dictionary<int, HashSet<int>>();
+      public const int DecimalPrecision = 6;
 
       public static bool IsMesh { get { return (_meshGeom != null && _geom == null); } }
+
+      public class SegmentComparer : EqualityComparer<IndexSegment>
+      {
+         private bool _compareBothDirections = false;
+
+         public SegmentComparer(bool compareBothDirections)
+         {
+            _compareBothDirections = compareBothDirections;
+         }
+
+         public override bool Equals(IndexSegment o1, IndexSegment o2)
+         {
+            return o1.coincide(o2, _compareBothDirections);
+         }
+
+         public override int GetHashCode(IndexSegment obj)
+         {
+            // Simple hashcode implementation as described in Joshua Bloch's "Effective Java" book
+            int a = _compareBothDirections ? Math.Min(obj.startPindex, obj.endPIndex) : obj.startPindex;
+            int b = _compareBothDirections ? Math.Max(obj.startPindex, obj.endPIndex) : obj.endPIndex;
+            int hash = 23;
+            hash = hash * 31 + a;
+            hash = hash * 31 + b;
+            return hash;
+         }
+      }
+
+      /// <summary>
+      /// Function called before and after triangle merging.
+      /// Before merging it calculates the Euler characteristic of the original mesh.
+      /// After merging it calculates the Euler characteristic of the merged mesh.
+      /// </summary>
+      private int CalculateEulerCharacteristic()
+      {
+         int noVertices = (IsMesh) ? _meshGeom.Vertices.Count : _geom.VertexCount;
+         int noHoles = 0; // Stays zero if mesh is triangular
+         int noFaces;
+         HashSet<IndexSegment> edges = new HashSet<IndexSegment>(new SegmentComparer(true/*compareBothDirections*/));
+         if (_mergedFaceList.Count != 0)
+         {
+            // Merging already occurred, calculate new Euler characteristic
+            noFaces = _mergedFaceList.Count;
+            foreach (int mergedFace in _mergedFaceList)
+            {
+               edges.UnionWith(facesColl[mergedFace].outerAndInnerBoundaries);
+               if (facesColl[mergedFace].indexedInnerBoundaries != null)
+                  noHoles += facesColl[mergedFace].indexedInnerBoundaries.Count;
+            }
+         }
+         else
+         {
+            if (IsMesh)
+            {
+               noFaces = _meshGeom.NumTriangles;
+               for (int faceIdx = 0; faceIdx < noFaces; faceIdx++)
+               {
+                  MeshTriangle tri = _meshGeom.get_Triangle(faceIdx);
+                  edges.Add(new IndexSegment((int)tri.get_Index(0), (int)tri.get_Index(1)));
+                  edges.Add(new IndexSegment((int)tri.get_Index(1), (int)tri.get_Index(2)));
+                  edges.Add(new IndexSegment((int)tri.get_Index(2), (int)tri.get_Index(0)));
+               }
+            }
+            else
+            {
+               noFaces = _geom.TriangleCount;
+               for (int faceIdx = 0; faceIdx < noFaces; faceIdx++)
+               {
+                  TriangleInShellComponent tri = _geom.GetTriangle(faceIdx);
+                  edges.Add(new IndexSegment(tri.VertexIndex0, tri.VertexIndex1));
+                  edges.Add(new IndexSegment(tri.VertexIndex1, tri.VertexIndex2));
+                  edges.Add(new IndexSegment(tri.VertexIndex2, tri.VertexIndex0));
+               }
+            }
+         }
+
+         // V - E + F - I
+         return noVertices - edges.Count + noFaces - noHoles;
+      }
 
       /// <summary>
       /// Constructor for the class, accepting the TriangulatedShellComponent from the result of body tessellation
@@ -81,49 +154,24 @@ namespace Revit.IFC.Export.Utility
       /// <summary>
       /// Custom IEqualityComparer for a vector with tolerance for use with Dictionary
       /// </summary>
-      public class vectorCompare : IEqualityComparer<XYZ>
+      public class VectorCompare : IEqualityComparer<XYZ>
       {
          public bool Equals(XYZ o1, XYZ o2)
          {
-            bool xdiff = Math.Abs((o1 as XYZ).X - (o2 as XYZ).X) < _tol;
-            bool ydiff = Math.Abs((o1 as XYZ).Y - (o2 as XYZ).Y) < _tol;
-            bool zdiff = Math.Abs((o1 as XYZ).Z - (o2 as XYZ).Z) < _tol;
-            if (xdiff && ydiff && zdiff)
-               return true;
-            else
-               return false;
+            return (Math.Abs((o1 as XYZ).X - (o2 as XYZ).X) < Tolerance) &&
+            (Math.Abs((o1 as XYZ).Y - (o2 as XYZ).Y) < Tolerance) &&
+            (Math.Abs((o1 as XYZ).Z - (o2 as XYZ).Z) < Tolerance);
          }
 
          public int GetHashCode(XYZ obj)
          {
-            // Uses the precision set in MathUtils to round the values so that the HashCode will be consistent with the Equals method
-            double X = Math.Round(obj.X, _tolNoDecPrecision);
-            double Y = Math.Round(obj.Y, _tolNoDecPrecision);
-            double Z = Math.Round(obj.Z, _tolNoDecPrecision);
+            // Uses the precision set in MathUtils to round the values so that the HashCode 
+            // will be consistent with the Equals method.
+            double X = Math.Round(obj.X, DecimalPrecision);
+            double Y = Math.Round(obj.Y, DecimalPrecision);
+            double Z = Math.Round(obj.Z, DecimalPrecision);
 
             return X.GetHashCode() ^ Y.GetHashCode() ^ Z.GetHashCode();
-         }
-      }
-
-      /// <summary>
-      /// Custom IEqualityComparer for a lighweight line segment used in this merge utility
-      /// </summary>
-      public class SegmentCompare : IEqualityComparer<IndexSegment>
-      {
-         public bool Equals(IndexSegment o1, IndexSegment o2)
-         {
-            if (o1.coincide(o2))
-               return true;
-            else
-               return false;
-         }
-
-         public int GetHashCode(IndexSegment obj)
-         {
-            int hash = 23;
-            hash = hash * 31 + obj.startPindex;
-            hash = hash * 31 + obj.endPIndex;
-            return hash;
          }
       }
 
@@ -135,11 +183,11 @@ namespace Revit.IFC.Export.Utility
          /// <summary>
          /// Vertex index of the starting point
          /// </summary>
-         public int startPindex { get; set; } = 0;
+         public int startPindex { get; set; }
          /// <summary>
          /// Vertex index of the end point
          /// </summary>
-         public int endPIndex { get; set; } = 0;
+         public int endPIndex { get; set; }
          /// <summary>
          /// Constructor for generating the class
          /// </summary>
@@ -168,12 +216,13 @@ namespace Revit.IFC.Export.Utility
          /// <summary>
          /// Test whether a line segment coincides with this one (must be exactly the same start - end, or end - start) 
          /// </summary>
-         /// <param name="inputSegment"></param>
+         /// <param name="inputSegment">Line segment to test for coincidence</param>
+         /// <param name="compareBothDirections">Whether to check if the input segment is the reverse of this one</param>
          /// <returns>True if coincide</returns>
-         public bool coincide(IndexSegment inputSegment)
+         public bool coincide(IndexSegment inputSegment, bool compareBothDirections)
          {
             return ((startPindex == inputSegment.startPindex && endPIndex == inputSegment.endPIndex)
-               || (endPIndex == inputSegment.startPindex && startPindex == inputSegment.endPIndex));
+               || (compareBothDirections && (endPIndex == inputSegment.startPindex && startPindex == inputSegment.endPIndex)));
          }
 
          /// <summary>
@@ -194,20 +243,20 @@ namespace Revit.IFC.Export.Utility
          /// <summary>
          /// Vertex indices for the outer boundary of the face
          /// </summary>
-         public IList<int> indexOuterBoundary { get; set; } = null;
+         public IList<int> indexOuterBoundary { get; set; }
          /// <summary>
          /// List of vertex indices for the inner boundaries
          /// </summary>
-         public IList<IList<int>> indexedInnerBoundaries { get; set; } = null;
+         public IList<IList<int>> indexedInnerBoundaries { get; set; }
          /// <summary>
          /// Collection of all the vertices (outer and inner)
          /// </summary>
-         public IList<IndexSegment> outerAndInnerBoundaries { get; set; } = null;
+         public IList<IndexSegment> outerAndInnerBoundaries { get; set; }
          IDictionary<IndexSegment, int> boundaryLinesDict;
          /// <summary>
          /// The normal vector of the face
          /// </summary>
-         public XYZ normal { get; set; } = null;
+         public XYZ normal { get; set; }
 
          /// <summary>
          /// Constructor taking a list of vertex indices (face without hole) 
@@ -304,7 +353,7 @@ namespace Revit.IFC.Export.Utility
 
             if (boundaryLinesDict == null)
             {
-               IEqualityComparer<IndexSegment> segCompare = new SegmentCompare();
+               IEqualityComparer<IndexSegment> segCompare = new SegmentComparer(false/*compareBothDirections*/);
                boundaryLinesDict = new Dictionary<IndexSegment, int>(segCompare);
             }
             else
@@ -411,13 +460,33 @@ namespace Revit.IFC.Export.Utility
       }
 
       /// <summary>
+      /// Check if the merged mesh is closed by verifying that all its edges have a corresponding reversed edge.
+      /// </summary>
+      /// <returns>Boolean value that indicates whether the merged mesh is closed or not</returns>
+      public bool IsClosed()
+      {
+         // All edges should have at least one corresponding reversed edge for the mesh to be closed
+         if (_mergedFaceList.Count == 0)
+            throw new InvalidOperationException("IsClosed called before coplanar triangle merge");
+
+         // This isn't the most optimized approach, but it's intended to be used only after merging 
+         // Meshes as those don't have any API data that indicates whether they are closed or not.
+         // Ideally we'd want to have an appropriate API method in the future, or use a better mesh 
+         // structure for analysis, like a proper half-edge representation.
+         IEnumerable<IndexSegment> edges = _mergedFaceList.SelectMany(x => facesColl[x].outerAndInnerBoundaries);
+         return edges.Select(x => x.reverse()).All(x => edges.Any(y => x.coincide(y, false)));
+      }
+
+      /// <summary>
       /// Combine coplanar triangles from the faceted body if they share the edge. From this process, polygonal faces (with or without holes) will be created
       /// </summary>
       public void SimplifyAndMergeFaces()
       {
-         int noTriangle = (IsMesh)? _meshGeom.NumTriangles : _geom.TriangleCount;
-         int noVertices = (IsMesh)? _meshGeom.Vertices.Count : _geom.VertexCount;
-         IEqualityComparer<XYZ> normalComparer = new vectorCompare();
+         int eulerBefore = CalculateEulerCharacteristic();
+
+         int noTriangle = (IsMesh) ? _meshGeom.NumTriangles : _geom.TriangleCount;
+         int noVertices = (IsMesh) ? _meshGeom.Vertices.Count : _geom.VertexCount;
+         IEqualityComparer<XYZ> normalComparer = new VectorCompare();
          Dictionary<XYZ, List<int>> faceSortedByNormal = new Dictionary<XYZ, List<int>>(normalComparer);
 
          for (int ef = 0; ef < noTriangle; ++ef)
@@ -427,16 +496,12 @@ namespace Revit.IFC.Export.Utility
             if (IsMesh)
             {
                MeshTriangle f = _meshGeom.get_Triangle(ef);
-               vertIndex.Add((int) f.get_Index(0));
-               vertIndex.Add((int)f.get_Index(1));
-               vertIndex.Add((int)f.get_Index(2));
+               vertIndex = new List<int>(3) { (int)f.get_Index(0), (int)f.get_Index(1), (int)f.get_Index(2) };
             }
             else
             {
                TriangleInShellComponent f = _geom.GetTriangle(ef);
-               vertIndex.Add(f.VertexIndex0);
-               vertIndex.Add(f.VertexIndex1);
-               vertIndex.Add(f.VertexIndex2);
+               vertIndex = new List<int>(3) { f.VertexIndex0, f.VertexIndex1, f.VertexIndex2 };
             }
 
             IndexFace intF = new IndexFace(vertIndex);
@@ -445,16 +510,12 @@ namespace Revit.IFC.Export.Utility
 
             if (!faceSortedByNormal.TryGetValue(intF.normal, out fIDList))
             {
-               fIDList = new List<int>();
-               fIDList.Add(ef);
+               fIDList = new List<int>(1) { ef };
                faceSortedByNormal.Add(intF.normal, fIDList);
             }
-            else
+            else if (!fIDList.Contains(ef))
             {
-               if (!fIDList.Contains(ef))
-               {
-                  fIDList.Add(ef);
-               }
+               fIDList.Add(ef);
             }
          }
 
@@ -474,7 +535,11 @@ namespace Revit.IFC.Export.Utility
             }
             else if (!_mergedFaceList.Contains(fListDict.Value[0]))
                _mergedFaceList.Add(fListDict.Value[0]);    // No pair face, add it into the mergedList
-         }         
+         }
+
+         int eulerAfter = CalculateEulerCharacteristic();
+         if (eulerBefore != eulerAfter)
+            throw new InvalidOperationException(); // Coplanar merge broke the mesh in some way, so we need to fall back to exporting a triangular mesh
       }
 
       /// <summary>
@@ -491,7 +556,7 @@ namespace Revit.IFC.Export.Utility
          inputFaceList.RemoveAt(0);  // remove the first face from the list
          bool merged = false;
 
-         IEqualityComparer<IndexSegment> segCompare = new SegmentCompare();
+         IEqualityComparer<IndexSegment> segCompare = new SegmentComparer(false/*compareBothDirections*/);
          IDictionary<IndexSegment, Tuple<IndexFace, int, int>> segmentOfFaceDict = new Dictionary<IndexSegment, Tuple<IndexFace, int, int>>(segCompare);
          IList<int> discardList = new List<int>();
          for (int iFace = 0; iFace < inputFaceList.Count; ++iFace)
@@ -805,7 +870,7 @@ namespace Revit.IFC.Export.Utility
          if (segmentOfFaceDict.Count > 0)
          {
             HashSet<int> indexFaces = new HashSet<int>();
-            foreach (KeyValuePair<IndexSegment,Tuple<IndexFace,int,int>> segmentFace in segmentOfFaceDict)
+            foreach (KeyValuePair<IndexSegment, Tuple<IndexFace, int, int>> segmentFace in segmentOfFaceDict)
             {
                indexFaces.Add(segmentFace.Value.Item2);
             }

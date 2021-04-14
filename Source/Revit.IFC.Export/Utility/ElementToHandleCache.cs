@@ -54,11 +54,19 @@ namespace Revit.IFC.Export.Utility
          if (m_ElementIdToHandleDictionary.TryGetValue(elementId, out handle))
          {
             // We need to make sure the handle isn't stale.  If it is, remove it. 
+            try
+            {
             if (!IFCAnyHandleUtil.IsValidHandle(handle))
+               {
+                  m_ElementIdToHandleDictionary.Remove(elementId);
+                  handle = null;
+               }
+            }
+            catch
             {
                m_ElementIdToHandleDictionary.Remove(elementId);
                handle = null;
-         }
+            }
          }
          return handle;
       }

@@ -205,11 +205,11 @@ namespace Revit.IFC.Export.Exporter
 
          XYZ curveOffset = XYZ.Zero;
          if (offsetTransform != null)
-            curveOffset = -UnitUtil.UnscaleLength(offsetTransform.Origin);
+            curveOffset = -(offsetTransform.Origin);
          else
          {
-            // Note that we do not have to have any scaling adjustment here, since the curve origin is in the 
-            // same internal coordinate system as the curve.
+         // Note that we do not have to have any scaling adjustment here, since the curve origin is in the 
+         // same internal coordinate system as the curve.
             curveOffset = -lcs.Origin;
          }
 
@@ -219,17 +219,6 @@ namespace Revit.IFC.Export.Exporter
          if (ExporterCacheManager.ExportOptionsCache.ExportAs4ReferenceView)
          {
             IFCAnyHandle axisHnd = GeometryUtil.CreatePolyCurveFromCurve(exporterIFC, curve);
-            //IFCFile file = exporterIFC.GetFile();
-            //IList<int> segmentIndex = null;
-            //IList<IList<double>> pointList = GeometryUtil.PointListFromCurve(exporterIFC, curve, null, null, out segmentIndex);
-
-            //// For now because of no support in creating IfcLineIndex and IfcArcIndex yet, it is set to null
-            ////IList<IList<int>> segmentIndexList = new List<IList<int>>();
-            ////segmentIndexList.Add(segmentIndex);
-            //IList<IList<int>> segmentIndexList = null;
-
-            //IFCAnyHandle pointListHnd = IFCInstanceExporter.CreateCartesianPointList3D(file, pointList);
-            //IFCAnyHandle axisHnd = IFCInstanceExporter.CreateIndexedPolyCurve(file, pointListHnd, segmentIndexList, false);
             axis_items = new List<IFCAnyHandle>();
             if (!IFCAnyHandleUtil.IsNullOrHasNoValue(axisHnd))
             {
@@ -295,10 +284,10 @@ namespace Revit.IFC.Export.Exporter
          string profileName = NamingUtil.GetProfileName(element);
 
          Plane beamExtrusionBasePlane = GeometryUtil.CreatePlaneByXYVectorsAtOrigin(planeXVec, planeYVec);
+         GenerateAdditionalInfo addInfo = GenerateAdditionalInfo.GenerateBody | GenerateAdditionalInfo.GenerateProfileDef;
          info.RepresentationHandle = ExtrusionExporter.CreateExtrusionWithClipping(exporterIFC, element,
              catId, solid, beamExtrusionBasePlane, orientTrf.Origin, beamDirection, null, out completelyClipped,
-             out footPrintInfo, out materialAndProfile, addInfo: GenerateAdditionalInfo.GenerateProfileDef, 
-             profileName: profileName);
+             out footPrintInfo, out materialAndProfile, addInfo: addInfo, profileName: profileName);
          if (completelyClipped)
          {
             info.DontExport = true;
@@ -436,7 +425,6 @@ namespace Revit.IFC.Export.Exporter
             // Check for containment override
             IFCAnyHandle overrideContainerHnd = null;
             ElementId overrideContainerId = ParameterUtil.OverrideContainmentParameter(exporterIFC, element, out overrideContainerHnd);
-
             using (PlacementSetter setter = PlacementSetter.Create(exporterIFC, element, null, orientTrf, overrideContainerId, overrideContainerHnd))
             {
                IFCAnyHandle localPlacement = setter.LocalPlacement;
@@ -507,7 +495,7 @@ namespace Revit.IFC.Export.Exporter
                      if (ExporterCacheManager.ExportOptionsCache.ExportAs4ReferenceView)
                         bodyExporterOptions.CollectMaterialAndProfile = false;
                      else
-                        bodyExporterOptions.CollectMaterialAndProfile = true;
+                     bodyExporterOptions.CollectMaterialAndProfile = true;
 
                      if (geomObjects != null && geomObjects.Count == 1 && geomObjects[0] is Solid)
                      {
@@ -518,7 +506,7 @@ namespace Revit.IFC.Export.Exporter
                         materialIds = bodyData.MaterialIds;
                         if (!bodyData.OffsetTransform.IsIdentity)
                            offsetTransform = bodyData.OffsetTransform;
-                        materialAndProfile = bodyData.materialAndProfile;
+                        materialAndProfile = bodyData.MaterialAndProfile;
                      }
                   }
 
@@ -530,8 +518,8 @@ namespace Revit.IFC.Export.Exporter
 
                   IList<IFCAnyHandle> representations = new List<IFCAnyHandle>();
                   IFCAnyHandle axisRep = CreateBeamAxis(exporterIFC, element, catId, axisInfo, offsetTransform);
-                  if (!IFCAnyHandleUtil.IsNullOrHasNoValue(axisRep))
-                     representations.Add(axisRep);
+                     if (!IFCAnyHandleUtil.IsNullOrHasNoValue(axisRep))
+                        representations.Add(axisRep);
                   representations.Add(repHnd);
 
                   Transform boundingBoxTrf = (offsetTransform == null) ? Transform.Identity : offsetTransform.Inverse;

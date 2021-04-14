@@ -33,13 +33,6 @@ namespace Revit.IFC.Export.Toolkit
       RelAggregates = 2
    }
 
-   enum IFCBuildingSubElements
-   {
-      RelContainedInSpatialStructure = 1,
-      RelAggregatesProducts = 2,
-      RelAggregatesBuildingStories = 3
-   }
-
    enum IFCBuildingStoreySubElements
    {
       RelContainedInSpatialStructure = 1,
@@ -124,11 +117,21 @@ namespace Revit.IFC.Export.Toolkit
       PipeSegmentType = 1
    }
 
+   enum IFCProjectSubElements
+   {
+      RelContainedInBuildingSpatialStructure = 1,
+      RelContainedInSiteSpatialStructure = 2,
+      RelAggregatesBuildingStories = 3
+   }
+
    enum IFCRampSubElements
    {
       ContainedRamp = 2,
-      ContainmentRelation = 3 // same as IFCStairSubElements.ContainmentRelation
-   }
+      ContainmentRelation = 3, // same as IFCStairSubElements.ContainmentRelation
+      FlightIdOffset = 4,
+      LandingIdOffset = 201,
+      StringerIdOffset = 401
+}
 
    enum IFCReinforcingBarSubElements
    {
@@ -151,8 +154,11 @@ namespace Revit.IFC.Export.Toolkit
    enum IFCStairSubElements
    {
       ContainedStair = 2,
-      ContainmentRelation = 3
-   }
+      ContainmentRelation = 3,
+      FlightIdOffset = 4,
+      LandingIdOffset = 201,
+      StringerIdOffset = 401,
+}
 
    enum IFCWallSubElements
    {

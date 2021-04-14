@@ -11,7 +11,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>Revit.IFC.Export</RootNamespace>
     <AssemblyName>Revit.IFC.Export</AssemblyName>
-    <TargetFrameworkVersion>v4.7</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <TargetFrameworkProfile>
     </TargetFrameworkProfile>
     <FileAlignment>512</FileAlignment>
@@ -41,22 +41,29 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
     <Prefer32Bit>false</Prefer32Bit>
+    <WarningsNotAsErrors>618</WarningsNotAsErrors>
+    <PlatformTarget>x64</PlatformTarget>
+    <DefineConstants>IFC_OPENSOURCE</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
     <Prefer32Bit>false</Prefer32Bit>
+    <WarningsNotAsErrors>618</WarningsNotAsErrors>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Slow_Debug|x64'">
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
     <DefineConstants>TRACE;DEBUG;IFC_OPENSOURCE;</DefineConstants>
+    <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
     <DefineConstants>TRACE;IFC_OPENSOURCE;</DefineConstants>
+    <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Antlr4.Runtime, Version=4.6.0.0, Culture=neutral, PublicKeyToken=09abb75b9ed49849, processorArchitecture=MSIL">
-      <HintPath>..\..\packages\Antlr4.Runtime.4.6.6\lib\net45\Antlr4.Runtime.dll</HintPath>
+    <Reference Include="GeometryGymIFC, Version=0.0.22.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\..\packages\GeometryGymIFC.0.0.22\lib\net45\GeometryGymIFC.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="GeometryGymIFC, Version=0.0.21.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\..\packages\GeometryGymIFC.0.0.21\lib\net45\GeometryGymIFC.dll</HintPath>
@@ -64,13 +71,13 @@
     <Reference Include="Newtonsoft.Json, Version=12.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <HintPath>..\..\packages\Newtonsoft.Json.12.0.2\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
-    <Reference Include="RevitAPI, Version=20.0.0.0, Culture=neutral, processorArchitecture=AMD64">
+    <Reference Include="RevitAPI, Version=19.2.0.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>C:\Program Files\Autodesk\Revit 2019\RevitAPI.dll</HintPath>
+      <HintPath>..\..\..\..\..\Program Files\Autodesk\Revit 2019\RevitAPI.dll</HintPath>
     </Reference>
-    <Reference Include="RevitAPIIFC, Version=20.0.0.0, Culture=neutral, processorArchitecture=AMD64">
+    <Reference Include="RevitAPIIFC, Version=19.2.0.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>C:\Program Files\Autodesk\Revit 2019\RevitAPIIFC.dll</HintPath>
+      <HintPath>..\..\..\..\..\Program Files\Autodesk\Revit 2019\RevitAPIIFC.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Web.Extensions" />
@@ -83,8 +90,6 @@
     <Compile Include="Exporter\BeamExporter.cs" />
     <Compile Include="Exporter\BodyData.cs" />
     <Compile Include="Exporter\BodyExporterOptions.cs" />
-    <Compile Include="Exporter\BodyGroupData.cs" />
-    <Compile Include="Exporter\BodyGroupKey.cs" />
     <Compile Include="Exporter\BoundingBoxExporter.cs" />
     <Compile Include="Exporter\CeilingExporter.cs" />
     <Compile Include="Exporter\ConnectorExporter.cs" />
@@ -115,6 +120,7 @@
     <Compile Include="Exporter\PropertySet\AttributeSetDescription.cs" />
     <Compile Include="Exporter\PropertySet\Calculators\FireRatingCalculator.cs" />
     <Compile Include="Exporter\PropertySet\Calculators\IsExternalCalculator.cs" />
+    <Compile Include="Exporter\PropertySet\Calculators\ISOCD3766ShapeParameterRCalculator.cs" />
     <Compile Include="Exporter\PropertySet\Calculators\NosingLengthCalculator.cs" />
     <Compile Include="Exporter\PropertySet\Calculators\NumberOfRiserCalculator.cs" />
     <Compile Include="Exporter\PropertySet\Calculators\NumberOfTreadsCalculator.cs" />
@@ -134,7 +140,6 @@
     <Compile Include="Exporter\PropertySet\Calculators\RollCalculator.cs" />
     <Compile Include="Exporter\PropertySet\Calculators\FinishCalculator.cs" />
     <Compile Include="Exporter\PropertySet\Calculators\ISOCD3766BendingEndHookCalculator.cs" />
-    <Compile Include="Exporter\PropertySet\Calculators\ISOCD3766BendingRadiusCalculator.cs" />
     <Compile Include="Exporter\PropertySet\Calculators\ISOCD3766BendingStartHookCalculator.cs" />
     <Compile Include="Exporter\PropertySet\Calculators\ISOCD3766ShapeCode.cs" />
     <Compile Include="Exporter\PropertySet\Calculators\ISOCD3766ShapeParameterACalculator.cs" />
@@ -251,12 +256,12 @@
     <Compile Include="Utility\ExporterStateManager.cs" />
     <Compile Include="Utility\ExporterUtil.cs" />
     <Compile Include="Utility\ExportOptionsCache.cs" />
+    <Compile Include="Utility\FabricParams.cs" />
     <Compile Include="Utility\FamilyExporterUtil.cs" />
     <Compile Include="Utility\FamilyTypeInfo.cs" />
     <Compile Include="Utility\FootPrintInfo.cs" />
     <Compile Include="Utility\GeometryUtil.cs" />
     <Compile Include="Utility\GroupCache.cs" />
-    <Compile Include="Utility\GroupElementGeometryCache.cs" />
     <Compile Include="Utility\GUIDOptions.cs" />
     <Compile Include="Utility\GUIDUtil.cs" />
     <Compile Include="Utility\HandleToElementCache.cs" />
@@ -267,7 +272,9 @@
     <Compile Include="Utility\LevelUtil.cs" />
     <Compile Include="Utility\LogicalPropertyInfoCache.cs" />
     <Compile Include="Utility\MaterialAndProfile.cs" />
+    <Compile Include="Utility\MaterialConstituentCache.cs" />
     <Compile Include="Utility\MaterialConstituentSetCache.cs" />
+    <Compile Include="Utility\MaterialLayerSetInfo.cs" />
     <Compile Include="Utility\MEPCache.cs" />
     <Compile Include="Utility\NamingOptions.cs" />
     <Compile Include="Utility\NamingUtil.cs" />
@@ -354,6 +361,22 @@
       <CustomToolNamespace>Revit.IFC.Export.Utility</CustomToolNamespace>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Antlr4>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Antlr4.CodeGenerator">
+      <Version>4.6.6</Version>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Antlr4.Runtime">
+      <Version>4.6.6</Version>
+    </PackageReference>
+    <PackageReference Include="GeometryGymIFC">
+      <Version>0.0.20</Version>
+    </PackageReference>
+    <PackageReference Include="Newtonsoft.Json">
+      <Version>10.0.3</Version>
+    </PackageReference>
   </ItemGroup>
   <!--
     Always Import the appropriate *.OutputPath.targets file BEFORE the

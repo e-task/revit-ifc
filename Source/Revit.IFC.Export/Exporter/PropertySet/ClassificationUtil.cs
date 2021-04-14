@@ -36,6 +36,11 @@ namespace Revit.IFC.Export.Exporter.PropertySet
    /// </summary>
    public class ClassificationUtil
    {
+      private static string GetUniformatURL()
+      {
+         return "https://www.csiresources.org/standards/uniformat";
+      }
+
       /// <summary>
       /// Creates uniformat classification.
       /// </summary>
@@ -63,12 +68,12 @@ namespace Revit.IFC.Export.Exporter.PropertySet
          IFCAnyHandle classification;
          if (!ExporterCacheManager.ClassificationCache.ClassificationHandles.TryGetValue(uniformatKeyString, out classification))
          {
-            classification = IFCInstanceExporter.CreateClassification(file, "http://www.csiorg.net/uniformat", "1998", null, uniformatKeyString);
+            classification = IFCInstanceExporter.CreateClassification(file, GetUniformatURL(), "1998", null, uniformatKeyString);
             ExporterCacheManager.ClassificationCache.ClassificationHandles.Add(uniformatKeyString, classification);
          }
 
          if (!String.IsNullOrEmpty(uniformatCode))
-            InsertClassificationReference(exporterIFC, file, elemHnd, uniformatKeyString, uniformatCode, uniformatDescription, "http://www.csiorg.net/uniformat");
+            InsertClassificationReference(exporterIFC, file, elemHnd, uniformatKeyString, uniformatCode, uniformatDescription, GetUniformatURL());
 
       }
 
@@ -96,6 +101,8 @@ namespace Revit.IFC.Export.Exporter.PropertySet
          int standardPass = 1;
          int numCustomCodes = ExporterCacheManager.ClassificationCache.CustomClassificationCodeNames.Count;
 
+         // Note that we do the "custom" nodes first, and then the 10 standard ones.
+         Element elementType = element.Document.GetElement(element.GetTypeId());
          while (standardPass <= 10)
          {
             // Create a classification, if it is not set.
@@ -116,8 +123,11 @@ namespace Revit.IFC.Export.Exporter.PropertySet
                standardPass++;
             }
 
-            if (ParameterUtil.GetStringValueFromElementOrSymbol(element, classificationCodeFieldName, out paramClassificationCode) == null)
+            if (ParameterUtil.GetStringValueFromElementOrSymbol(element, elementType, classificationCodeFieldName,
+               out paramClassificationCode) == null)
+            {
                continue;
+            }
 
             parseClassificationCode(paramClassificationCode, classificationCodeFieldName, out classificationName, out classificationCode, out classificationDescription);
 
@@ -125,11 +135,11 @@ namespace Revit.IFC.Export.Exporter.PropertySet
             {
                if (string.Compare(classificationCodeFieldName, "Assembly Code", true) == 0)
                {
-                  ParameterUtil.GetStringValueFromElementOrSymbol(element, BuiltInParameter.UNIFORMAT_DESCRIPTION, false, out classificationDescription);
+                  ParameterUtil.GetStringValueFromElementOrSymbol(element, elementType, BuiltInParameter.UNIFORMAT_DESCRIPTION, false, out classificationDescription);
                }
                else if (string.Compare(classificationCodeFieldName, "OmniClass Number", true) == 0)
                {
-                  ParameterUtil.GetStringValueFromElementOrSymbol(element, BuiltInParameter.OMNICLASS_DESCRIPTION, false, out classificationDescription);
+                  ParameterUtil.GetStringValueFromElementOrSymbol(element, elementType, BuiltInParameter.OMNICLASS_DESCRIPTION, false, out classificationDescription);
                }
             }
             // If classificationName is empty, there is no classification to export.
@@ -240,7 +250,8 @@ namespace Revit.IFC.Export.Exporter.PropertySet
          if (String.IsNullOrEmpty(classificationName))
          {
             // No Classification Name specified, look for Classification Name assignment from the cache (from UI)
-            if (!ExporterCacheManager.ClassificationCache.FieldNameToClassificationNames.TryGetValue(classificationCodeFieldName, out classificationName))
+            if (string.IsNullOrEmpty(classificationCodeFieldName)
+               || !ExporterCacheManager.ClassificationCache.FieldNameToClassificationNames.TryGetValue(classificationCodeFieldName, out classificationName))
                classificationName = "Default Classification";
          }
 
@@ -262,13 +273,12 @@ namespace Revit.IFC.Export.Exporter.PropertySet
          IFCAnyHandle classificationReferenceAssociation = ExporterCacheManager.ClassificationReferenceCache.GetClassificationReferenceAssociation(classificationKeyString, classificationCode);
          if (IFCAnyHandleUtil.IsNullOrHasNoValue(classificationReferenceAssociation))
          {
+         IFCAnyHandle classificationReference = CreateClassificationReference(file, classificationKeyString, classificationCode, classificationDescription, location);
 
-            IFCAnyHandle classificationReference = CreateClassificationReference(file, classificationKeyString, classificationCode, classificationDescription, location);
+         HashSet<IFCAnyHandle> relatedObjects = new HashSet<IFCAnyHandle>();
+         relatedObjects.Add(elemHnd);
 
-            HashSet<IFCAnyHandle> relatedObjects = new HashSet<IFCAnyHandle>();
-            relatedObjects.Add(elemHnd);
-
-            IFCAnyHandle relAssociates = IFCInstanceExporter.CreateRelAssociatesClassification(file, GUIDUtil.CreateGUID(),
+         IFCAnyHandle relAssociates = IFCInstanceExporter.CreateRelAssociatesClassification(file, GUIDUtil.CreateGUID(),
             ExporterCacheManager.OwnerHistoryHandle, classificationKeyString + " Classification", "", relatedObjects, classificationReference);
             ExporterCacheManager.ClassificationReferenceCache.AddClassificationReferenceAssociation(classificationKeyString, classificationCode, relAssociates);
          }

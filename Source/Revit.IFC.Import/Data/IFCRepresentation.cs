@@ -38,6 +38,7 @@ namespace Revit.IFC.Import.Data
       Box,
       FootPrint,
       Style,
+      CoG,  // Center of gravity
       Unhandled
    }
 
@@ -144,6 +145,8 @@ namespace Revit.IFC.Import.Data
          if (string.Compare(identifier, "Style", true) == 0 ||
              IFCAnyHandleUtil.IsSubTypeOf(ifcRepresentation, IFCEntityType.IfcStyledRepresentation))
             return IFCRepresentationIdentifier.Style;
+         if (string.Compare(identifier, "CoG", true) == 0)
+            return IFCRepresentationIdentifier.CoG;
 
          Importer.TheLog.LogWarning(ifcRepresentation.StepId, "Found unknown representation type: " + identifier, false);
 
@@ -193,59 +196,54 @@ namespace Revit.IFC.Import.Data
          HashSet<IFCAnyHandle> items =
              IFCAnyHandleUtil.GetAggregateInstanceAttribute<HashSet<IFCAnyHandle>>(ifcRepresentation, "Items");
 
-         LayerAssignment = IFCPresentationLayerAssignment.GetTheLayerAssignment(ifcRepresentation, true);
+         LayerAssignment = IFCPresentationLayerAssignment.GetTheLayerAssignment(ifcRepresentation);
 
-         foreach (IFCAnyHandle item in items)
+         if (items == null)
          {
-            IFCRepresentationItem repItem = null;
-            try
-            {
-               if (NotAllowedInRepresentation(item))
-               {
-                  IFCEntityType entityType = IFCAnyHandleUtil.GetEntityType(item);
-                  Importer.TheLog.LogWarning(item.StepId, "Ignoring unhandled representation item of type " + entityType.ToString() + " in " +
-                      Identifier.ToString() + " representation.", true);
-                  continue;
-               }
-
-               // Special processing for bounding boxes - only IfcBoundingBox allowed.
-               if (IFCAnyHandleUtil.IsSubTypeOf(item, IFCEntityType.IfcBoundingBox))
-               {
-                  // Don't read in Box represenation unless options allow it.
-                  if (IFCImportFile.TheFile.Options.ProcessBoundingBoxGeometry == IFCProcessBBoxOptions.Never)
-                     Importer.TheLog.LogWarning(item.StepId, "BoundingBox not imported with ProcessBoundingBoxGeometry=Never", false);
-                  else
-                  {
-                     if (BoundingBox != null)
-                     {
-                        Importer.TheLog.LogWarning(item.StepId, "Found second IfcBoundingBox representation item, ignoring.", false);
-                        continue;
-                     }
-                     BoundingBox = ProcessBoundingBox(item);
-                  }
-               }
-               else
-                  repItem = IFCRepresentationItem.ProcessIFCRepresentationItem(item);
-            }
-            catch (Exception ex)
-            {
-               Importer.TheLog.LogError(item.StepId, ex.Message, false);
-            }
-            if (repItem != null)
-               RepresentationItems.Add(repItem);
+            Importer.TheLog.LogWarning(ifcRepresentation.StepId, "Missing non-optional representation items.", true);
          }
-      }
-
-      /// <summary>
-      /// Deal with missing "LayerAssignments" in IFC2x3 EXP file.
-      /// </summary>
-      /// <param name="layerAssignment">The layer assignment to add to this representation.</param>
-      public void PostProcessLayerAssignment(IFCPresentationLayerAssignment layerAssignment)
-      {
-         if (LayerAssignment == null)
-            LayerAssignment = layerAssignment;
          else
-            IFCImportDataUtil.CheckLayerAssignmentConsistency(LayerAssignment, layerAssignment, Id);
+         {
+            foreach (IFCAnyHandle item in items)
+            {
+               IFCRepresentationItem repItem = null;
+               try
+               {
+                  if (NotAllowedInRepresentation(item))
+                  {
+                     IFCEntityType entityType = IFCAnyHandleUtil.GetEntityType(item);
+                     Importer.TheLog.LogWarning(item.StepId, "Ignoring unhandled representation item of type " + entityType.ToString() + " in " +
+                         Identifier.ToString() + " representation.", true);
+                     continue;
+                  }
+
+                  // Special processing for bounding boxes - only IfcBoundingBox allowed.
+                  if (IFCAnyHandleUtil.IsSubTypeOf(item, IFCEntityType.IfcBoundingBox))
+                  {
+                     // Don't read in Box represenation unless options allow it.
+                     if (IFCImportFile.TheFile.Options.ProcessBoundingBoxGeometry == IFCProcessBBoxOptions.Never)
+                        Importer.TheLog.LogWarning(item.StepId, "BoundingBox not imported with ProcessBoundingBoxGeometry=Never", false);
+                     else
+                     {
+                        if (BoundingBox != null)
+                        {
+                           Importer.TheLog.LogWarning(item.StepId, "Found second IfcBoundingBox representation item, ignoring.", false);
+                           continue;
+                        }
+                        BoundingBox = ProcessBoundingBox(item);
+                     }
+                  }
+                  else
+                     repItem = IFCRepresentationItem.ProcessIFCRepresentationItem(item);
+               }
+               catch (Exception ex)
+               {
+                  Importer.TheLog.LogError(item.StepId, ex.Message, false);
+               }
+               if (repItem != null)
+                  RepresentationItems.Add(repItem);
+            }
+         }
       }
 
       /// <summary>

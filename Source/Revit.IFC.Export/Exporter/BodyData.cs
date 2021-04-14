@@ -17,6 +17,7 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 //
 
+using System;
 using System.Collections.Generic;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.IFC;
@@ -84,9 +85,14 @@ namespace Revit.IFC.Export.Exporter
       public Transform OffsetTransform { get; set; } = null;
 
       /// <summary>
-      /// The exported material Ids
+      /// Material Ids in a list to maintain its order and allows duplicate item (similar to MaterialIds)
       /// </summary>
-      public HashSet<ElementId> MaterialIds { get; set; } = new HashSet<ElementId>();
+      public IList<ElementId> MaterialIds { get; set; } = new List<ElementId>();
+
+      /// <summary>
+      /// Set of pair(s) of (Sub)Category name and the MaterialId of geometry object, which is part of a family
+      /// </summary>
+      public HashSet<Tuple<MaterialConstituentInfo, IFCAnyHandle>> RepresentationItemInfo { get; private set; } = new HashSet<Tuple<MaterialConstituentInfo, IFCAnyHandle>>();
 
       /// <summary>
       /// A handle for the Footprint representation
@@ -111,11 +117,13 @@ namespace Revit.IFC.Export.Exporter
       /// <param name="materialIds">The material ids.</param>
       public BodyData(IFCAnyHandle representationHnd, Transform offsetTransform, HashSet<ElementId> materialIds)
       {
-         this.RepresentationHnd = representationHnd;
+         RepresentationHnd = representationHnd;
          if (offsetTransform != null)
-            this.OffsetTransform = offsetTransform;
+            OffsetTransform = offsetTransform;
          if (materialIds != null)
-            this.MaterialIds = materialIds;
+         {
+            MaterialIds = new List<ElementId>(materialIds);
+         }
       }
 
       /// <summary>
@@ -142,6 +150,30 @@ namespace Revit.IFC.Export.Exporter
       }
 
       /// <summary>
+      /// Add the pair of component category name and material id pair
+      /// This function also does AddMaterial(). Only use either AddMaterial if no component category needed, or this is Component Category is needed
+      /// </summary>
+      /// <param name="componentCategory">The Component Category name</param>
+      /// <param name="materialId">The material id</param>
+      public void AddRepresentationItemInfo(Document document, GeometryObject geomObject, ElementId materialId, IFCAnyHandle repItem)
+      {
+         GraphicsStyle graphicsStyle = document.GetElement(geomObject.GraphicsStyleId) as GraphicsStyle;
+         string catName = null;
+         if (graphicsStyle != null && graphicsStyle.GraphicsStyleCategory != null)
+         {
+            catName = graphicsStyle.GraphicsStyleCategory.Name;            // set with the proper category name if any
+         }
+         else
+         {
+            Material material = document.GetElement(materialId) as Material;
+            catName = (material != null) ? NamingUtil.GetMaterialName(material) : "<Unnamed>";    // Default name to the Material name if not null or <Unnamed>
+         }
+
+         RepresentationItemInfo.Add(Tuple.Create(new MaterialConstituentInfo(catName, materialId), repItem));
+         AddMaterial(materialId);
+      }
+
+      /// <summary>
       /// Material and Profile information for IfcMaterialProfile
       /// </summary>
       public MaterialAndProfile materialAndProfile
@@ -155,6 +187,18 @@ namespace Revit.IFC.Export.Exporter
             return MaterialAndProfile;
          }
          set { MaterialAndProfile = value; }
+      }
+
+      /// <summary>
+      /// Static function to create a new copy of BodyData but resetting the MaterialIds
+      /// </summary>
+      /// <param name="bodyDataIn">the input BodyData</param>
+      /// <returns>the new copy of BodyData with cleared MaterialIds</returns>
+      public static BodyData Create(BodyData bodyDataIn)
+      {
+         BodyData retBodyData = new BodyData(bodyDataIn);   // create a new copy of bodyDataIn
+         retBodyData.MaterialIds.Clear();                // Clear the MaterialIdsList
+         return retBodyData;
       }
    }
 }

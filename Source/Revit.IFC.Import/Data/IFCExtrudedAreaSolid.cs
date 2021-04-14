@@ -34,27 +34,15 @@ namespace Revit.IFC.Import.Data
 {
    public class IFCExtrudedAreaSolid : IFCSweptAreaSolid
    {
-      XYZ m_Direction = null;
-
-      double m_Depth = 0.0;
-
       /// <summary>
       /// The direction of the extrusion in the local coordinate system.
       /// </summary>
-      public XYZ Direction
-      {
-         get { return m_Direction; }
-         protected set { m_Direction = value; }
-      }
+      public XYZ Direction { get; protected set; } = null;
 
       /// <summary>
       /// The depth of the extrusion, along the extrusion direction.
       /// </summary>
-      public double Depth
-      {
-         get { return m_Depth; }
-         protected set { m_Depth = value; }
-      }
+      public double Depth { get; protected set; } = 0.0;
 
       protected IFCExtrudedAreaSolid()
       {
@@ -73,21 +61,18 @@ namespace Revit.IFC.Import.Data
 
          bool found = false;
          Depth = IFCImportHandleUtil.GetRequiredScaledLengthAttribute(solid, "Depth", out found);
-         if (found && Depth < 0.0)
-         {
-            // Reverse depth and orientation.
-            if (Application.IsValidThickness(-Depth))
-            {
-               Depth = -Depth;
-               Direction = -Direction;
-               Importer.TheLog.LogWarning(solid.StepId, "negative extrusion depth is invalid, reversing direction.", false);
-            }
-         }
-
-         if (!found || !Application.IsValidThickness(Depth))
+         if (!found || MathUtil.IsAlmostZero(Depth))
          {
             string depthAsString = IFCUnitUtil.FormatLengthAsString(Depth);
             Importer.TheLog.LogError(solid.StepId, "extrusion depth of " + depthAsString + " is invalid, aborting.", true);
+         }
+
+         if (Depth < 0.0)
+         {
+            // Reverse depth and orientation.
+            Depth = -Depth;
+            Direction = -Direction;
+            Importer.TheLog.LogWarning(solid.StepId, "negative extrusion depth is invalid, reversing direction.", false);
          }
       }
 
@@ -97,9 +82,9 @@ namespace Revit.IFC.Import.Data
       /// <param name="creator">The IfcProduct that may or may not contain a valid axis curve.</param>
       /// <param name="lcs">The local coordinate system.</param>
       /// <returns>The axis curve, if found, and valid.</returns>
-      /// <remarks>In this case, we only allow bounded lines and arcs to be valid axis curves, as per IFC2x3 convention.
-      /// The Curve may be contained as either a single Curve in the IFCCurve representation item, or it could be an
-      /// open CurveLoop with one item.</remarks>
+      /// <remarks>In this case, we only allow bounded curves to be valid axis curves.
+      /// The Curve may be contained as either a single Curve in the IFCCurve representation item,
+      /// or it could be an open CurveLoop that could be represented as a single curve.</remarks>
       private Curve GetAxisCurve(IFCProduct creator, Transform lcs)
       {
          // We need an axis curve to clip the extrusion profiles; if we can't get one, fail
@@ -126,20 +111,12 @@ namespace Revit.IFC.Import.Data
             {
                if (item is IFCCurve)
                {
-                  // We will accept either a bounded Curve of type Line or Arc, 
-                  // or an open CurveLoop with one curve that satisfies the same condition.
+                  // We will accept a bounded curve, or an open CurveLoop that can be represented
+                  // as one curve.
                   IFCCurve ifcCurve = item as IFCCurve;
                   Curve axisCurve = ifcCurve.Curve;
                   if (axisCurve == null)
-                  {
-                     CurveLoop axisCurveLoop = ifcCurve.CurveLoop;
-                     if (axisCurveLoop != null && axisCurveLoop.IsOpen() && axisCurveLoop.Count() == 1)
-                     {
-                        axisCurve = axisCurveLoop.First();
-                        if (!(axisCurve is Line || axisCurve is Arc))
-                           axisCurve = null;
-                     }
-                  }
+                     axisCurve = ifcCurve.ConvertCurveLoopIntoSingleCurve();
 
                   if (axisCurve != null)
                      return axisCurve.CreateTransformed(lcs);
@@ -792,6 +769,23 @@ namespace Revit.IFC.Import.Data
          if (!IFCImportFile.TheFile.EntityMap.TryGetValue(ifcSolid.StepId, out solid))
             solid = new IFCExtrudedAreaSolid(ifcSolid);
          return (solid as IFCExtrudedAreaSolid);
+      }
+
+      /// <summary>
+      /// In case of a Boolean operation failure, provide a recommended direction to shift the geometry in for a second attempt.
+      /// </summary>
+      /// <param name="lcs">The local transform for this entity.</param>
+      /// <returns>An XYZ representing a unit direction vector, or null if no direction is suggested.</returns>
+      /// <remarks>If the 2nd attempt fails, a third attempt will be done with a shift in the opposite direction.</remarks>
+      public override XYZ GetSuggestedShiftDirection(Transform lcs)
+      {
+         if (Position == null)
+         {
+            return (lcs == null) ? Direction : lcs.OfVector(Direction);
+         }
+         
+         Transform extrusionLCS = (lcs == null) ? Position : lcs.Multiply(Position);
+         return extrusionLCS.OfVector(Direction);
       }
    }
 }

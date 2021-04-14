@@ -101,6 +101,8 @@ namespace Revit.IFC.Export.Utility
          return val;
       }
 
+      public UnitType UnitType { get; private set; } = UnitType.UT_Undefined;
+
       object Process(ExpectedValueEnum expectedValueType)
       {
          object val = null;
@@ -121,7 +123,10 @@ namespace Revit.IFC.Export.Utility
          {
             walker.Walk(eval, tree);
             if (eval.HasValue)
+            {
                val = eval.Value;
+               UnitType = eval.UnitType;
+            }
          }
          catch
          {
@@ -148,7 +153,7 @@ namespace Revit.IFC.Export.Utility
          if (expr.nodePropertyValue is Int32)
          {
             if (unaryOp.Equals("-"))
-               ret.nodePropertyValue = -1 * ((int) expr.nodePropertyValue);
+               ret.nodePropertyValue = -1 * ((int)expr.nodePropertyValue);
             else
                ret.nodePropertyValue = (int)expr.nodePropertyValue;
          }
@@ -240,7 +245,7 @@ namespace Revit.IFC.Export.Utility
             if (ops.MULTIPLY() != null)
                ret.nodePropertyValue = (int)expr1.nodePropertyValue * (int)expr2.nodePropertyValue;
             if (ops.DIVIDE() != null)
-               ret.nodePropertyValue = (double) ((int)expr1.nodePropertyValue / (int)expr2.nodePropertyValue);
+               ret.nodePropertyValue = (double)((int)expr1.nodePropertyValue / (int)expr2.nodePropertyValue);
             if (ops.ADDITION() != null)
                ret.nodePropertyValue = (int)expr1.nodePropertyValue + (int)expr2.nodePropertyValue;
             if (ops.SUBTRACT() != null)
@@ -257,12 +262,18 @@ namespace Revit.IFC.Export.Utility
       /// <returns>integer value of the power</returns>
       public static int GetPowerOp(ParamExprGrammarParser.Power_opContext powerOp)
       {
-         int powerOpNumber = int.Parse(powerOp.INT().GetText());
+         int powerOpNumber = 0;
          if (powerOp.ChildCount == 3)
          {
+            powerOpNumber = int.Parse(powerOp.GetChild(2).GetText());
             if (powerOp.GetChild(1).GetText().Equals("-"))
                powerOpNumber = -1 * powerOpNumber;
          }
+         else if (powerOp.ChildCount == 2)
+         {
+            powerOpNumber = int.Parse(powerOp.GetChild(1).GetText());
+         }
+
          return powerOpNumber;
       }
 
@@ -281,6 +292,54 @@ namespace Revit.IFC.Export.Utility
             ret.nodePropertyValue = Math.Pow((double)expr.nodePropertyValue, (double)powerOp);
          }
          return ret;
+      }
+
+
+      /// <summary>
+      /// Check for a special parameter value containing the Paramater expression
+      /// </summary>
+      /// <param name="paramValue">the Parameter value</param>
+      /// <param name="element">the Element</param>
+      /// <param name="paramName">the Parameter Name</param>
+      /// <returns>the resolved Parameter Expression value or null if not resolved</returns>
+      public static ParamExprResolver CheckForParameterExpr(string paramValue, Element element, string paramName, ExpectedValueEnum expectedDataType, out object propertyValue)
+      {
+         propertyValue = null;
+         string paramValuetrim = paramValue.Trim();
+         if (IsParameterExpr(paramValue))
+         {
+            ParamExprResolver pResv = new ParamExprResolver(element, paramName, paramValuetrim);
+            switch (expectedDataType)
+            {
+               case ExpectedValueEnum.STRINGVALUE:
+                  propertyValue = pResv.GetStringValue();
+                  break;
+               case ExpectedValueEnum.DOUBLEVALUE:
+                  propertyValue = pResv.GetDoubleValue();
+                  break;
+               case ExpectedValueEnum.INTVALUE:
+                  propertyValue = pResv.GetIntValue();
+                  break;
+               default:
+                  break;
+            }
+            return pResv;
+         }
+
+         return null;
+      }
+
+      /// <summary>
+      /// Check whether parameter value contains Parameter Expression
+      /// </summary>
+      /// <param name="paramValue">parameter value</param>
+      /// <returns>true or false</returns>
+      public static bool IsParameterExpr(string paramValue)
+      {
+         // This is kind of hack to quickly check whether we need to parse the parameter or not by checking that the value is enclosed by "{ }" or "u{ }" for unique value
+         string paramValuetrim = paramValue.Trim();
+         return ((paramValuetrim.Length > 1 && paramValuetrim[0] == '{')
+            || (paramValuetrim.Length > 2 && paramValuetrim[1] == '{')) && (paramValuetrim[paramValuetrim.Length - 1] == '}');
       }
    }
 }

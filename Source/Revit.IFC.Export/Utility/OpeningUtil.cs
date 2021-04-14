@@ -59,7 +59,9 @@ namespace Revit.IFC.Export.Utility
          using (TransformSetter transformSetter = TransformSetter.Create())
          {
             if (offsetTransform != null)
+            {
                transformSetter.Initialize(exporterIFC, offsetTransform.Inverse);
+            }
 
             IFCFile file = exporterIFC.GetFile();
             ElementId categoryId = CategoryUtil.GetSafeCategoryId(element);
@@ -71,7 +73,8 @@ namespace Revit.IFC.Export.Utility
             for (int curr = info.Count - 1; curr >= 0; curr--)
             {
                Transform extrusionTrf = Transform.Identity;
-               IFCAnyHandle extrusionHandle = ExtrusionExporter.CreateExtrudedSolidFromExtrusionData(exporterIFC, element, info[curr]);
+               IFCAnyHandle extrusionHandle = 
+                  ExtrusionExporter.CreateExtrudedSolidFromExtrusionData(exporterIFC, element, info[curr], out extrusionTrf);
                if (IFCAnyHandleUtil.IsNullOrHasNoValue(extrusionHandle))
                   continue;
 
@@ -91,10 +94,11 @@ namespace Revit.IFC.Export.Utility
                string guid = GUIDUtil.CreateGUID();
                IFCAnyHandle ownerHistory = ExporterCacheManager.OwnerHistoryHandle;
                string openingName = NamingUtil.GetIFCNamePlusIndex(element, openingNumber++);
-               IFCAnyHandle openingElement = IFCInstanceExporter.CreateOpeningElement(exporterIFC, element, guid, ownerHistory,
-                  openingPlacement, openingRep);
-               IFCAnyHandleUtil.OverrideNameAttribute(openingElement, openingName);
-               IFCAnyHandleUtil.SetAttribute(openingElement, "ObjectType", openingObjectType);
+               string openingDescription = NamingUtil.GetDescriptionOverride(element, null);
+               string openingTag = NamingUtil.GetTagOverride(element);
+               IFCAnyHandle openingElement = IFCInstanceExporter.CreateOpeningElement(exporterIFC, 
+                  guid, ownerHistory, openingName, openingDescription, openingObjectType,
+                  openingPlacement, openingRep, openingTag);
                IFCExportInfoPair exportInfo = new IFCExportInfoPair(IFCEntityType.IfcOpeningElement);
                wrapper.AddElement(null, openingElement, setter, extraParams, true, exportInfo);
                if (ExporterCacheManager.ExportOptionsCache.ExportBaseQuantities && (extraParams != null))
@@ -194,7 +198,7 @@ namespace Revit.IFC.Export.Utility
          if (canUseElementGUID)
             return GUIDUtil.CreateGUID(openingElem);
          else
-            return GUIDUtil.CreateGUID();
+            return GUIDUtil.CreateSubElementGUID(openingElem, (int)IFCDoorSubElements.DoorOpening);
       }
 
       /// <summary>
@@ -249,22 +253,22 @@ namespace Revit.IFC.Export.Utility
             if (parentHandle == null)
                parentHandle = elementHandles[0];
 
+            string predefinedType;
+            IFCExportInfoPair exportType = ExporterUtil.GetExportType(exporterIFC, openingElem, out predefinedType);
+            bool exportingDoorOrWindow = (exportType.ExportInstance == IFCEntityType.IfcDoor ||
+                  exportType.ExportType == IFCEntityType.IfcDoorType ||
+                  exportType.ExportInstance == IFCEntityType.IfcWindow ||
+                  exportType.ExportType == IFCEntityType.IfcWindowType);
+
             bool isDoorOrWindowOpening = IsDoorOrWindowOpening(exporterIFC, openingElem, element);
             bool insertHasHost = false;
             bool insertInThisHost = false;
             if (openingElem is FamilyInstance && element is Wall)
             {
-               string ifcEnumType;
-               IFCExportInfoPair exportType = ExporterUtil.GetExportType(exporterIFC, openingElem, out ifcEnumType);
                Element instHost = (openingElem as FamilyInstance).Host;
                insertHasHost = (instHost != null);
                insertInThisHost = (insertHasHost && instHost.Id == element.Id);
-               isDoorOrWindowOpening = 
-                  insertInThisHost &&
-                  (exportType.ExportInstance == IFCEntityType.IfcDoor || 
-                  exportType.ExportType == IFCEntityType.IfcDoorType || 
-                  exportType.ExportInstance == IFCEntityType.IfcWindow || 
-                  exportType.ExportType == IFCEntityType.IfcWindowType);
+               isDoorOrWindowOpening = insertInThisHost && exportingDoorOrWindow;
             }
 
             if (isDoorOrWindowOpening && currentWallIsHost)
@@ -282,8 +286,8 @@ namespace Revit.IFC.Export.Utility
             // determined above, or an embedded wall, then we can't use the element GUID 
             // for the opening. 
             bool canUseElementGUID = (!insertHasHost || insertInThisHost) && 
-               !isDoorOrWindowOpening && 
-               !(openingElem is Wall);
+               !isDoorOrWindowOpening && !(openingElem is Wall) &&
+               !exportingDoorOrWindow;
 
             IList<Solid> solids = openingData.GetOpeningSolids();
             foreach (Solid solid in solids)
@@ -403,11 +407,12 @@ namespace Revit.IFC.Export.Utility
                openingName = NamingUtil.GetNameOverride(hostElement, NamingUtil.CreateIFCObjectName(exporterIFC, hostElement));
          }
 
-         IFCAnyHandle openingHnd = IFCInstanceExporter.CreateOpeningElement(exporterIFC, hostElement, openingGUID, ownerHistory,
-            openingPlacement, prodRep);
+         string openingDescription = NamingUtil.GetDescriptionOverride(insertElement, null);
+         string openingTag = NamingUtil.GetTagOverride(insertElement);
+         IFCAnyHandle openingHnd = IFCInstanceExporter.CreateOpeningElement(exporterIFC, 
+            openingGUID, ownerHistory, openingName, openingDescription, openingObjectType,
+            openingPlacement, prodRep, openingTag);
          IFCExportInfoPair exportInfo = new IFCExportInfoPair(IFCEntityType.IfcOpeningElement, openingObjectType);
-         IFCAnyHandleUtil.OverrideNameAttribute(openingHnd, openingName);
-         IFCAnyHandleUtil.SetAttribute(openingHnd, "ObjectType", openingObjectType);
          if (ExporterCacheManager.ExportOptionsCache.ExportBaseQuantities)
             PropertyUtil.CreateOpeningQuantities(exporterIFC, openingHnd, extrusionCreationData);
 
@@ -417,7 +422,7 @@ namespace Revit.IFC.Export.Utility
             if (GUIDUtil.IsGUIDFor(insertElement, openingGUID))
                elementForProperties = insertElement;
 
-            localWrapper.AddElement(insertElement, openingHnd, setter, extrusionCreationData, true, exportInfo);
+            localWrapper.AddElement(insertElement, openingHnd, setter, extrusionCreationData, false, exportInfo);
          }
 
          string voidGuid = GUIDUtil.CreateGUID();
@@ -467,11 +472,12 @@ namespace Revit.IFC.Export.Utility
          string openingName = NamingUtil.GetNameOverride(insertElement, null);
          if (string.IsNullOrEmpty(openingName))
             openingName = NamingUtil.GetNameOverride(hostElement, NamingUtil.CreateIFCObjectName(exporterIFC, hostElement));
-         IFCAnyHandle openingHnd = IFCInstanceExporter.CreateOpeningElement(exporterIFC, null, openingGUID, ownerHistory,
-             ExporterUtil.CreateLocalPlacement(file, hostPlacement, null), openingProdRepHnd);
+         string openingDescription = NamingUtil.GetDescriptionOverride(insertElement, null);
+         string openingTag = NamingUtil.GetTagOverride(insertElement);
+         IFCAnyHandle openingHnd = IFCInstanceExporter.CreateOpeningElement(exporterIFC, 
+            openingGUID, ownerHistory, openingName, openingDescription, openingObjectType,
+            ExporterUtil.CreateLocalPlacement(file, hostPlacement, null), openingProdRepHnd, openingTag);
          IFCExportInfoPair exportInfo = new IFCExportInfoPair(IFCEntityType.IfcOpeningElement, openingObjectType);
-         IFCAnyHandleUtil.OverrideNameAttribute(openingHnd, openingName);
-         IFCAnyHandleUtil.SetAttribute(openingHnd, "ObjectType", openingObjectType);
          IFCExtrusionCreationData ecData = null;
          if (ExporterCacheManager.ExportOptionsCache.ExportBaseQuantities)
          {

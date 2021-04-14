@@ -82,6 +82,27 @@ namespace Revit.IFC.Export.Utility
       }
 
       /// <summary>
+      /// Determine if there is a per-element presentation layer override for a representation handle.
+      /// </summary>
+      /// <param name="element">The element associated with the representation handle.</param>
+      /// <returns>The name of the layer, or null if there is no override.</returns>
+      public static string GetPresentationLayerOverride(Element element)
+      {
+         // Search for old "IFCCadLayer" or new "IfcPresentationLayer".
+         string ifcCADLayer = null;
+         if ((ParameterUtil.GetStringValueFromElementOrSymbol(element, "IFCCadLayer", out ifcCADLayer) == null) ||
+             string.IsNullOrWhiteSpace(ifcCADLayer))
+         {
+            if ((ParameterUtil.GetStringValueFromElementOrSymbol(element, "IfcPresentationLayer", out ifcCADLayer) == null) ||
+                string.IsNullOrWhiteSpace(ifcCADLayer))
+            {
+               ifcCADLayer = ExporterStateManager.GetCurrentCADLayerOverride();
+            }
+         }
+         return ifcCADLayer;
+      }
+
+      /// <summary>
       /// Creates a shape representation and register it to shape representation layer.
       /// </summary>
       /// <param name="exporterIFC">The ExporterIFC object.</param>
@@ -95,29 +116,25 @@ namespace Revit.IFC.Export.Utility
          string identifier, string representationType, ISet<IFCAnyHandle> items)
       {
          IFCAnyHandle newShapeRepresentation = CreateBaseShapeRepresentation(exporterIFC, contextOfItems, identifier, representationType, items);
-         if (IFCAnyHandleUtil.IsNullOrHasNoValue(newShapeRepresentation))
-            return newShapeRepresentation;
-
-         // Search for old "IFCCadLayer" or new "IfcPresentationLayer".
-         string ifcCADLayer = null;
-         if ((ParameterUtil.GetStringValueFromElementOrSymbol(element, "IFCCadLayer", out ifcCADLayer) == null) ||
-             string.IsNullOrWhiteSpace(ifcCADLayer))
+         if (!IFCAnyHandleUtil.IsNullOrHasNoValue(newShapeRepresentation) &&
+            !ExporterCacheManager.ExportOptionsCache.ExportAs2x2)
          {
-            if ((ParameterUtil.GetStringValueFromElementOrSymbol(element, "IfcPresentationLayer", out ifcCADLayer) == null) ||
-                string.IsNullOrWhiteSpace(ifcCADLayer))
+            string ifcCADLayer = GetPresentationLayerOverride(element);
+
+            // We are using the DWG export layer table to correctly map category to DWG layer for the 
+            // IfcPresentationLayerAsssignment, if it is not overridden.
+            if (string.IsNullOrWhiteSpace(ifcCADLayer))
             {
-               ifcCADLayer = ExporterStateManager.GetCurrentCADLayerOverride();
+               ifcCADLayer = GetPresentationLayerOverride(element);
             }
-         }
 
-         // We are using the DWG export layer table to correctly map category to DWG layer for the 
-         // IfcPresentationLayerAsssignment, if it is not overridden.
-         if (!string.IsNullOrWhiteSpace(ifcCADLayer))
-         {
-            ExporterCacheManager.PresentationLayerSetCache.AddRepresentationToLayer(ifcCADLayer, newShapeRepresentation);
+            if (!string.IsNullOrWhiteSpace(ifcCADLayer))
+            {
+               ExporterCacheManager.PresentationLayerSetCache.AddRepresentationToLayer(ifcCADLayer, newShapeRepresentation);
+            }
+            else
+               exporterIFC.RegisterShapeForPresentationLayer(element, categoryId, newShapeRepresentation);
          }
-         else
-            exporterIFC.RegisterShapeForPresentationLayer(element, categoryId, newShapeRepresentation);
 
          return newShapeRepresentation;
       }
@@ -135,14 +152,15 @@ namespace Revit.IFC.Export.Utility
       public static IFCAnyHandle CreateShapeRepresentation(ExporterIFC exporterIFC, IFCAnyHandle contextOfItems,
          string identifier, string representationType, ISet<IFCAnyHandle> items, string ifcCADLayer)
       {
-         if (string.IsNullOrWhiteSpace(ifcCADLayer))
-            throw new ArgumentNullException("ifcCADLayer");
-
          IFCAnyHandle newShapeRepresentation = CreateBaseShapeRepresentation(exporterIFC, contextOfItems, identifier, representationType, items);
-         if (IFCAnyHandleUtil.IsNullOrHasNoValue(newShapeRepresentation))
-            return newShapeRepresentation;
+         if (!IFCAnyHandleUtil.IsNullOrHasNoValue(newShapeRepresentation))
+         {
+            if (!string.IsNullOrWhiteSpace(ifcCADLayer))
+            {
+               ExporterCacheManager.PresentationLayerSetCache.AddRepresentationToLayer(ifcCADLayer, newShapeRepresentation);
+            }
+         }
 
-         ExporterCacheManager.PresentationLayerSetCache.AddRepresentationToLayer(ifcCADLayer, newShapeRepresentation);
          return newShapeRepresentation;
       }
 
@@ -366,7 +384,7 @@ namespace Revit.IFC.Export.Utility
           IFCAnyHandle contextOfItems, ISet<IFCAnyHandle> bodyItems, bool exportAsFacetationOrMesh, IFCAnyHandle originalRepresentation)
       {
          string identifierOpt = null;
-         if (exportAsFacetationOrMesh)
+         if (exportAsFacetationOrMesh && ExporterCacheManager.ExportOptionsCache.ExportAsOlderThanIFC4)
          {
             if (ExporterCacheManager.ExportOptionsCache.ExportAsCOBIE)
                identifierOpt = ShapeRepresentationType.Mesh.ToString(); // IFC GSA convention
@@ -374,7 +392,7 @@ namespace Revit.IFC.Export.Utility
                identifierOpt = ShapeRepresentationType.Facetation.ToString(); // IFC2x2+ convention
          }
          else
-            identifierOpt = "Body"; // IFC2x2+ convention for IfcBuildingElement, IFC2x3 v2 convention for IfcSite
+            identifierOpt = "Body"; // Default
 
          string repTypeOpt = ShapeRepresentationType.SurfaceModel.ToString();  // IFC2x2+ convention
          IFCAnyHandle bodyRepresentation = CreateOrAppendShapeRepresentation(exporterIFC, element, categoryId,
@@ -450,7 +468,7 @@ namespace Revit.IFC.Export.Utility
       public static IFCAnyHandle CreateBodyMappedItemRep(ExporterIFC exporterIFC, Element element, ElementId categoryId,
          IFCAnyHandle contextOfItems, ISet<IFCAnyHandle> bodyItems)
       {
-         string identifierOpt = "Body";   // this is by IFC2x2+ convention
+         string identifierOpt = IFCAnyHandleUtil.GetStringAttribute(contextOfItems, "ContextIdentifier");
          string repTypeOpt = ShapeRepresentationType.MappedRepresentation.ToString();  // this is by IFC2x2+ convention
          IFCAnyHandle bodyRepresentation = CreateShapeRepresentation(exporterIFC, element, categoryId,
             contextOfItems, identifierOpt, repTypeOpt, bodyItems);
@@ -552,7 +570,7 @@ namespace Revit.IFC.Export.Utility
       /// <returns>The handle.</returns>
       public static IFCAnyHandle CreateAppropriateProductDefinitionShape(ExporterIFC exporterIFC, Element element, ElementId categoryId,
           GeometryElement geometryElement, BodyExporterOptions bodyExporterOptions, IList<IFCAnyHandle> extraReps,
-          IFCExtrusionCreationData extrusionCreationData, out BodyData bodyData)
+          IFCExtrusionCreationData extrusionCreationData, out BodyData bodyData, bool skipBody = false)
       {
          bodyData = null;
          SolidMeshGeometryInfo info = null;
@@ -570,7 +588,7 @@ namespace Revit.IFC.Export.Utility
                //   geometryList.Add(solid);
                //}
                geometryList = FamilyExporterUtil.RemoveInvisibleSolidsAndMeshes(element.Document, exporterIFC, ref solidList, ref meshes);
-               if (geometryList.Count == 0)
+               if (geometryList.Count == 0 && !skipBody)
                   return null;
             }
          }
@@ -582,17 +600,22 @@ namespace Revit.IFC.Export.Utility
             bodyExporterOptions.TryToExportAsExtrusion = true;
          }
 
-         bodyData = BodyExporter.ExportBody(exporterIFC, element, categoryId, ElementId.InvalidElementId, geometryList,
-             bodyExporterOptions, extrusionCreationData);
-         IFCAnyHandle bodyRep = bodyData.RepresentationHnd;
          List<IFCAnyHandle> bodyReps = new List<IFCAnyHandle>();
-         if (IFCAnyHandleUtil.IsNullOrHasNoValue(bodyRep))
+         if (!skipBody)
          {
-            if (extrusionCreationData != null)
-               extrusionCreationData.ClearOpenings();
+            ElementId matId = ExporterUtil.GetSingleMaterial(element);
+
+            bodyData = BodyExporter.ExportBody(exporterIFC, element, categoryId, matId, geometryList,
+                bodyExporterOptions, extrusionCreationData);
+            IFCAnyHandle bodyRep = bodyData.RepresentationHnd;
+            if (IFCAnyHandleUtil.IsNullOrHasNoValue(bodyRep))
+            {
+               if (extrusionCreationData != null)
+                  extrusionCreationData.ClearOpenings();
+            }
+            else
+               bodyReps.Add(bodyRep);
          }
-         else
-            bodyReps.Add(bodyRep);
 
          if (extraReps != null)
          {
@@ -600,26 +623,46 @@ namespace Revit.IFC.Export.Utility
                bodyReps.Add(hnd);
          }
 
-         Transform boundingBoxTrf = (bodyData.OffsetTransform != null) ? bodyData.OffsetTransform.Inverse : Transform.Identity;
+         Transform boundingBoxTrf = Transform.Identity;
+         if (bodyData != null && bodyData.OffsetTransform != null)
+            boundingBoxTrf = bodyData.OffsetTransform.Inverse;
          IFCAnyHandle boundingBoxRep = BoundingBoxExporter.ExportBoundingBox(exporterIFC, geometryElement, boundingBoxTrf);
          if (boundingBoxRep != null)
             bodyReps.Add(boundingBoxRep);
 
-         if (bodyReps.Count == 0)
-            return null;
          return IFCInstanceExporter.CreateProductDefinitionShape(exporterIFC.GetFile(), null, null, bodyReps);
       }
 
       /// <summary>
-      /// Creates a surface product definition shape representation.
+      /// Creates a product definition shape representation wihotu Body rep, but incl. bounding box based on the geometry and IFC version.
       /// </summary>
-      /// <param name="exporterIFC">The ExporterIFC object.</param>
-      /// <param name="element">The element.</param>
-      /// <param name="geometryElement">The geometry element.</param>
-      /// <param name="exportBoundaryRep">If this is true, it will export boundary representations.</param>
-      /// <param name="exportAsFacetation">If this is true, it will export the geometry as facetation.</param>
-      /// <returns>The handle.</returns>
-      public static IFCAnyHandle CreateSurfaceProductDefinitionShape(ExporterIFC exporterIFC, Element element,
+      /// <param name="exporterIFC">exporteriFC</param>
+      /// <param name="element">the Element</param>
+      /// <param name="categoryId">the cateogory id</param>
+      /// <param name="geometryElement">the geometry element</param>
+      /// <param name="bodyExporterOptions">exporter option</param>
+      /// <param name="extraReps">extra representation to be added to the product definition shape</param>
+      /// <returns>product definition shape handle</returns>
+      public static IFCAnyHandle CreateProductDefinitionShapeWithoutBodyRep(ExporterIFC exporterIFC, Element element, ElementId categoryId,
+          GeometryElement geometryElement, IList<IFCAnyHandle> extraReps)
+      {
+         BodyData bodyData;
+         BodyExporterOptions bodyExporterOptions = new BodyExporterOptions(false, ExportOptionsCache.ExportTessellationLevel.Medium);
+
+         return CreateAppropriateProductDefinitionShape(exporterIFC, element, categoryId,
+             geometryElement, bodyExporterOptions, extraReps, null, out bodyData, skipBody:true);
+      }
+      
+      /// <summary>
+         /// Creates a surface product definition shape representation.
+         /// </summary>
+         /// <param name="exporterIFC">The ExporterIFC object.</param>
+         /// <param name="element">The element.</param>
+         /// <param name="geometryElement">The geometry element.</param>
+         /// <param name="exportBoundaryRep">If this is true, it will export boundary representations.</param>
+         /// <param name="exportAsFacetation">If this is true, it will export the geometry as facetation.</param>
+         /// <returns>The handle.</returns>
+         public static IFCAnyHandle CreateSurfaceProductDefinitionShape(ExporterIFC exporterIFC, Element element,
          GeometryElement geometryElement, bool exportBoundaryRep, bool exportAsFacetation)
       {
          IFCAnyHandle bodyRep = null;
@@ -870,6 +913,75 @@ namespace Revit.IFC.Export.Utility
          }
 
          return 0;
+      }
+
+      /// <summary>
+      /// Create Shape representation of a geometry item together with its associated IfcShapeAspect. This works only for "Body"
+      /// </summary>
+      /// <param name="exporterIFC">exporter IFC</param>
+      /// <param name="hostElement">the host element owning the geometries</param>
+      /// <param name="hostProdDefShape">product definition shape of the host</param>
+      /// <param name="repType">Representation type</param>
+      /// <param name="aspectName">aspect name: expected to be component category, if not by default should be the same as the material name</param>
+      /// <param name="itemRep">the geometry representation item</param>
+      public static void CreateRepForShapeAspect(ExporterIFC exporterIFC, Element hostElement, IFCAnyHandle hostProdDefShape, string repType, string aspectName, IFCAnyHandle itemRep)
+      {
+         CreateRepForShapeAspect(exporterIFC, hostElement, hostProdDefShape, repType, aspectName, new HashSet<IFCAnyHandle>() { itemRep });
+      }
+
+      /// <summary>
+      /// Create Shape representation of a geometry item together with its associated IfcShapeAspect. This works only for "Body"
+      /// </summary>
+      /// <param name="exporterIFC">exporter IFC</param>
+      /// <param name="hostElement">the host element owning the geometries</param>
+      /// <param name="hostProdDefShape">product definition shape of the host</param>
+      /// <param name="repType">Representation type</param>
+      /// <param name="aspectName">aspect name: expected to be component category, if not by default should be the same as the material name</param>
+      /// <param name="itemRepSet">Set of IfcRepresentationItems</param>
+      public static void CreateRepForShapeAspect(ExporterIFC exporterIFC, Element hostElement, IFCAnyHandle hostProdDefShape, string repType, string aspectName, HashSet<IFCAnyHandle> itemRepSet)
+      {
+         string shapeIdent = "Body";
+         IFCAnyHandle contextOfItems = exporterIFC.Get3DContextHandle(shapeIdent);
+         ElementId catId = CategoryUtil.GetSafeCategoryId(hostElement);
+         if (IFCAnyHandleUtil.IsSubTypeOf(hostProdDefShape, IFCEntityType.IfcProductRepresentation))
+         {
+            IFCAnyHandle representationOfItem = RepresentationUtil.CreateShapeRepresentation(exporterIFC, hostElement, catId, contextOfItems, shapeIdent, repType, itemRepSet);
+            IFCAnyHandle shapeAspect = IFCInstanceExporter.CreateShapeAspect(exporterIFC.GetFile(), new List<IFCAnyHandle>() { representationOfItem }, aspectName, null, null, hostProdDefShape);
+         }
+         else if (IFCAnyHandleUtil.IsSubTypeOf(hostProdDefShape, IFCEntityType.IfcRepresentationMap))
+         {
+            IFCAnyHandle representation = IFCAnyHandleUtil.GetInstanceAttribute(hostProdDefShape, "MappedRepresentation");
+            string representationType = IFCAnyHandleUtil.GetRepresentationType(representation);
+            IFCAnyHandle representationOfItem = RepresentationUtil.CreateShapeRepresentation(exporterIFC, hostElement, catId, contextOfItems, shapeIdent,
+               representationType, itemRepSet);
+            IFCAnyHandle shapeAspect = IFCInstanceExporter.CreateShapeAspect(exporterIFC.GetFile(), new List<IFCAnyHandle>() { representationOfItem }, aspectName, null, null, hostProdDefShape);
+         }
+      }
+
+      /// <summary>
+      /// Create IfcStyledItem if not yet exists for material and assign it to the bodyItem
+      /// </summary>
+      /// <param name="file">The IFC file</param>
+      /// <param name="document">The document</param>
+      /// <param name="materialId">The material id</param>
+      /// <param name="bodyItem">The body Item to assign to the StyleItem to</param>
+      public static void CreateStyledItemAndAssign(IFCFile file, Document document, ElementId materialId, IFCAnyHandle bodyItem)
+      {
+         IFCAnyHandle surfStyleHnd = CategoryUtil.GetOrCreateMaterialStyle(document, file, materialId);
+         if (!IFCAnyHandleUtil.IsNullOrHasNoValue(surfStyleHnd))
+         {
+            ISet<IFCAnyHandle> styles = new HashSet<IFCAnyHandle>();
+            styles.Add(surfStyleHnd);
+
+            if (ExporterCacheManager.ExportOptionsCache.ExportAsOlderThanIFC4)
+            {
+               IFCInstanceExporter.CreatePresentationStyleAssignment(file, styles);
+            }
+            else
+            {
+               IFCInstanceExporter.CreateStyledItem(file, bodyItem, styles as HashSet<IFCAnyHandle>, null);
+            }
+         }
       }
    }
 }

@@ -22,6 +22,7 @@ using System.Text;
 using Autodesk.Revit;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.IFC;
+using System.Text.RegularExpressions;
 
 
 namespace Revit.IFC.Export.Utility
@@ -128,19 +129,13 @@ namespace Revit.IFC.Export.Utility
             if (ParameterUtil.GetStringValueFromElement(element, paramName, out paramValue) != null && !string.IsNullOrEmpty(paramValue))
             {
                string propertyValue = null;
-               string paramValuetrim = paramValue.Trim();
-               // This is kind of hack to quickly check whether we need to parse the parameter or not by checking that the value is enclosed by "{ }" or "u{ }" for unique value
-               if (((paramValuetrim.Length > 1 && paramValuetrim[0] == '{') || (paramValuetrim.Length > 2 && paramValuetrim[1] == '{')) && (paramValuetrim[paramValuetrim.Length - 1] == '}'))
-               {
-                  ParamExprResolver pResv = new ParamExprResolver(element, paramName, paramValuetrim);
-                  propertyValue = pResv.GetStringValue();
-                  if (string.IsNullOrEmpty(propertyValue))
-                     propertyValue = paramValue;   // return the original paramValue
-               }
+               object strValue = null;
+               ParamExprResolver.CheckForParameterExpr(paramValue, element, paramName, ParamExprResolver.ExpectedValueEnum.STRINGVALUE, out strValue);
+               if (strValue != null && strValue is string)
+                  propertyValue = strValue as string;
                else
                   propertyValue = paramValue;   // return the original paramValue
 
-               //return paramValue;
                return propertyValue;
             }
          }
@@ -149,41 +144,87 @@ namespace Revit.IFC.Export.Utility
       }
 
       /// <summary>
-      /// Gets override name from element.
+      /// Gets the IFC name for a material layer, taking into account shared parameter overrides.
       /// </summary>
-      /// <param name="element">
-      /// The element.
-      /// </param>
-      /// <param name="originalValue">
-      /// The original value.
-      /// </param>
-      /// <returns>
-      /// The string contains the name string value.
-      /// </returns>
+      /// <param name="material">The material.</param>
+      /// <returns>The IFC name of the material.</returns>
+      public static string GetMaterialLayerName(Material material)
+      {
+         return GetOverrideStringValue(material, "IfcMaterialLayer.Name", GetMaterialName(material));
+      }
+
+      /// <summary>
+      /// Gets the category name for a material, taking into account shared parameter overrides.
+      /// </summary>
+      /// <param name="material">The material.</param>
+      /// <returns>The category name of the material.</returns>
+      /// <remarks>This is a convenience function for Materials only.</remarks>
+      public static string GetMaterialCategoryName(Material material)
+      {
+         if (material == null)
+            return null;
+
+         return GetOverrideStringValue(material, "IfcCategory",
+            GetOverrideStringValue(material, "Category", material.MaterialCategory));
+      }
+      
+      /// <summary>
+       /// Gets the IFC name for a material, taking into account shared parameter overrides.
+       /// </summary>
+       /// <param name="material">The material.</param>
+       /// <returns>The IFC name of the material.</returns>
+       /// <remarks>This is a convenience function for Materials only.</remarks>
+      public static string GetMaterialName(Material material)
+      {
+         if (material == null)
+            return null;
+
+         return GetNameOverride(material, material.Name);
+      }
+
+      /// <summary>
+      /// Gets the IFC name for a material by id, taking into account shared parameter overrides.
+      /// </summary>
+      /// <param name="doc">The document.</param>
+      /// <param name="materialId">The id of the material.</param>
+      /// <returns>The IFC name of the material.</returns>
+      /// <remarks>This is a convenience function for Materials only.</remarks>
+      public static string GetMaterialName(Document doc, ElementId materialId)
+      {
+         Material material = doc.GetElement(materialId) as Material;
+         return GetMaterialName(material);
+      }
+
+      /// <summary>
+      /// Gets the IFC name for an element, taking into account shared parameter overrides.
+      /// </summary>
+      /// <param name="element">The element.</param>
+      /// <param name="originalValue">The default IFC name of the element, if not overriden.</param>
+      /// <returns>The IFC name of the element.</returns>
       public static string GetNameOverride(Element element, string originalValue)
       {
-         string nameOverride = "IfcName";
+         if (element == null)
+            return originalValue;
+
          // CQ_TODO: Understand the naming here and possible use GetCleanName - have it as UI option?
 
-         string overrideValue = GetOverrideStringValue(element, nameOverride, originalValue);
+         string overrideValue = GetOverrideStringValue(element, "IfcName", originalValue);
 
          // For backward compatibility where the old parameter name may still be use (NameOverride), handle it also if the above returns nothing
          if (string.IsNullOrEmpty(overrideValue)
             || (!string.IsNullOrEmpty(overrideValue) && overrideValue.Equals(originalValue)))
-         {
-            nameOverride = "NameOverride";
-            overrideValue = GetOverrideStringValue(element, nameOverride, originalValue);
+         { 
+            overrideValue = GetOverrideStringValue(element, "NameOverride", originalValue);
          }
 
-            if (element is ElementType || element is FamilySymbol)
-            {
-               if (string.IsNullOrEmpty(overrideValue)
-                  || (!string.IsNullOrEmpty(overrideValue) && overrideValue.Equals(originalValue)))
-               {
-                  nameOverride = "IfcName[Type]";
-                  overrideValue = GetOverrideStringValue(element, nameOverride, originalValue);
-               }
-            }
+         if (element is ElementType || element is FamilySymbol)
+         {
+            if (string.IsNullOrEmpty(overrideValue)
+               || (!string.IsNullOrEmpty(overrideValue) && overrideValue.Equals(originalValue)))
+         {
+            overrideValue = GetOverrideStringValue(element, "IfcName[Type]", originalValue);
+         }
+      }
 
          // CQ_TODO: Understand the naming here and possible use GetCleanName - have it as UI option?
          //overrideValue = GetCleanName(overrideValue);
@@ -386,19 +427,17 @@ namespace Revit.IFC.Export.Utility
          }
          return GetObjectTypeOverride(element, originalValue);
       }
-
       /// <summary>
       /// Gets Tag override from element.
       /// </summary>
       /// <param name="element">
       /// The element.
       /// </param>
-      /// <param name="originalValue">
-      /// The original value.
-      /// </param>
       /// <returns>The string contains the object type string value.</returns>
-      public static string GetTagOverride(Element element, string originalValue)
+      public static string GetTagOverride(Element element)
       {
+         string originalValue = NamingUtil.CreateIFCElementId(element);
+
          string nameOverride = "IfcTag";
          string overrideValue = GetOverrideStringValue(element, nameOverride, originalValue);
          if (string.IsNullOrEmpty(overrideValue)
@@ -416,6 +455,7 @@ namespace Revit.IFC.Export.Utility
                overrideValue = GetOverrideStringValue(element, nameOverride, originalValue);
             }
          }
+
          return overrideValue;
       }
 
@@ -461,10 +501,10 @@ namespace Revit.IFC.Export.Utility
          ElementType elementType = (isType ? element : element.Document.GetElement(element.GetTypeId())) as ElementType;
          if (elementType != null)
          {
-               familyName = elementType.FamilyName;
-               if (familyName == "???")
-                  familyName = "";
-            }
+            familyName = elementType.FamilyName;
+            if (familyName == "???")
+               familyName = "";
+         }
 
          string fullName = familyName;
          if (elementName != "")
@@ -474,10 +514,10 @@ namespace Revit.IFC.Export.Utility
                fullName = elementName;
             else
             {
-	           if (fullName != "")
-	              fullName = fullName + ":" + elementName;
-	           else
-	              fullName = elementName;
+            if (fullName != "")
+               fullName = fullName + ":" + elementName;
+            else
+               fullName = elementName;
             }
          }
 
@@ -862,6 +902,100 @@ namespace Revit.IFC.Export.Utility
             return originalName;
 
          return profileName;
+      }
+
+      /// <summary>
+      /// Get unique name by incrementing a number as suffix. It is looking for "name + (number)". It works like this:
+      /// - if the entry is "name" without number, it will return "name (2)"
+      /// - if the entry is "name (number)", it will return "name (number + 1)"
+      /// Only the last (number) will be evaluated in the case that there are multiple (number) in the string
+      /// </summary>
+      /// <param name="nameToCheck">the name to check</param>
+      /// <returns>the name with incremented number appended</returns>
+      public static string GetUniqueNameByIncrement(string nameToCheck)
+      {
+         string uniqueName = nameToCheck;
+         string baseName = null;
+         string suffix = null;
+         string prefix = null;
+         int number = 1;
+
+         // Looking for pattern "... name (number)". If the last part is number in bracket, this number will be incremented
+         Regex rx = new Regex(@"(?<basename>\w+)\s*[(]\s*(?<number>\d+)\s*[)]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+         MatchCollection matches = rx.Matches(uniqueName);
+
+         // If found matches, increment the number and return 
+         if (matches.Count > 0)
+         {
+            Match lastMatch = matches[matches.Count - 1];
+            GroupCollection groups = lastMatch.Groups;
+            baseName = groups["basename"].Value;
+            number = int.Parse(groups["number"].Value);
+
+            int index = lastMatch.Index;
+            int len = lastMatch.Length;
+
+            if (index > 1)
+            {
+               prefix = uniqueName.Substring(0, index - 1).Trim();
+               if (!string.IsNullOrEmpty(prefix))
+                  baseName = prefix + " " + baseName;
+            }
+
+            // It ends with word without number, it will be treated the same for the name without number
+            if (index + len < uniqueName.Length)
+            {
+               suffix = uniqueName.Substring(index + len).Trim();
+               if (!string.IsNullOrEmpty(suffix))
+                  uniqueName = uniqueName + " (" + (++number).ToString() + ")";
+               else
+               {
+                  number = int.Parse(groups["number"].Value);
+                  uniqueName = baseName + " (" + (++number).ToString() + ")";
+               }
+            }
+            else
+            {
+               number = int.Parse(groups["number"].Value);
+               uniqueName = baseName + " (" + (++number).ToString() + ")";
+            }
+         }
+         else
+         {
+            // If no match, return the name plus the incremented number (starting from 2)
+            uniqueName = uniqueName + " (" + (++number).ToString() + ")";
+         }
+
+         return uniqueName;
+      }
+
+      /// <summary>
+      /// Check unique name within the given Set. If the name is unique add the name and return it,
+      /// If it is not unique, it will call GetUniqueNameByIncrement() and check the new name for its existence in the Set, until it finds the unique name
+      /// </summary>
+      /// <param name="inputName">the input name</param>
+      /// <param name="theNameSet">the Set where the name should be search</param>
+      /// <returns>the unique name that is also added into the Set</returns>
+      public static string GetUniqueNameWithinSet(string inputName, ref HashSet<string> theNameSet)
+      {
+         string uniqueName = inputName;
+         if (!theNameSet.Contains(uniqueName))
+         {
+            theNameSet.Add(uniqueName);
+            return uniqueName;
+         }
+
+         while (true)
+         {
+            uniqueName = GetUniqueNameByIncrement(uniqueName);
+            if (!theNameSet.Contains(uniqueName))
+            {
+               theNameSet.Add(uniqueName);
+               break;
+            }
+         }
+
+         return uniqueName;
       }
    }
 }

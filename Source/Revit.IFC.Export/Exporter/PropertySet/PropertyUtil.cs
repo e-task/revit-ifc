@@ -25,6 +25,7 @@ using Revit.IFC.Common.Enums;
 using Revit.IFC.Common.Utility;
 using Revit.IFC.Export.Utility;
 using Revit.IFC.Export.Toolkit;
+using System.ComponentModel;
 
 namespace Revit.IFC.Export.Exporter.PropertySet
 {
@@ -61,7 +62,7 @@ namespace Revit.IFC.Export.Exporter.PropertySet
 
       private static void ValidateEnumeratedValue(string value, Type propertyEnumerationType)
       {
-         if (propertyEnumerationType != null && propertyEnumerationType.IsEnum)
+         if (propertyEnumerationType != null && propertyEnumerationType.IsEnum && !string.IsNullOrEmpty(value))
          {
             foreach (object enumeratedValue in Enum.GetValues(propertyEnumerationType))
             {
@@ -72,26 +73,32 @@ namespace Revit.IFC.Export.Exporter.PropertySet
                   return;
                }
             }
-            value = null;
+            //value = null;
          }
+
+         throw new InvalidEnumArgumentException("Enum value cannot be empty!");
       }
 
       protected static IFCAnyHandle CreateCommonProperty(IFCFile file, string propertyName, IFCData valueData, PropertyValueType valueType, string unitTypeKey)
       {
+         IFCAnyHandle unitHnd = (unitTypeKey != null) ? ExporterCacheManager.UnitsCache[unitTypeKey] : null;
          switch (valueType)
          {
             case PropertyValueType.EnumeratedValue:
                {
                   IList<IFCData> valueList = new List<IFCData>();
                   valueList.Add(valueData);
-                  return IFCInstanceExporter.CreatePropertyEnumeratedValue(file, propertyName, null, valueList, null);
+                  return IFCInstanceExporter.CreatePropertyEnumeratedValue(file, propertyName, null, valueList, unitHnd);
                }
             case PropertyValueType.SingleValue:
                {
-                  if (unitTypeKey != null)
-                     return IFCInstanceExporter.CreatePropertySingleValue(file, propertyName, null, valueData, ExporterCacheManager.UnitsCache[unitTypeKey]);
-                  else
-                     return IFCInstanceExporter.CreatePropertySingleValue(file, propertyName, null, valueData, null);
+                  return IFCInstanceExporter.CreatePropertySingleValue(file, propertyName, null, valueData, unitHnd);
+               }
+            case PropertyValueType.ListValue:
+               {
+                  IList<IFCData> valueList = new List<IFCData>();
+                  valueList.Add(valueData);
+                  return IFCInstanceExporter.CreatePropertyListValue(file, propertyName, null, valueList, unitHnd);
                }
             default:
                throw new InvalidOperationException("Missing case!");
@@ -120,6 +127,12 @@ namespace Revit.IFC.Export.Exporter.PropertySet
                }
             case PropertyValueType.SingleValue:
                return IFCInstanceExporter.CreatePropertySingleValue(file, propertyName, null, IFCDataUtil.CreateAsLabel(value), null);
+            case PropertyValueType.ListValue:
+               {
+                  IList<IFCData> valueList = new List<IFCData>();
+                  valueList.Add(IFCDataUtil.CreateAsLabel(value));
+                  return IFCInstanceExporter.CreatePropertyListValue(file, propertyName, null, valueList, null);
+               }
             default:
                throw new InvalidOperationException("Missing case!");
          }
@@ -761,7 +774,7 @@ namespace Revit.IFC.Export.Exporter.PropertySet
          {
             case PropertyType.PositiveRatio:
                {
-                  if (value < 0)
+                  if (value < MathUtil.Eps())
                      return null;
 
                   ratioData = IFCDataUtil.CreateAsPositiveRatioMeasure(value);
@@ -1538,22 +1551,6 @@ namespace Revit.IFC.Export.Exporter.PropertySet
          return CreateDoublePropertyFromElement(file, exporterIFC, elem, revitParameterName, ifcPropertyName,
              "IfcMassMeasure", UnitType.UT_Mass, valueType);
       }
-      /// <summary>
-      /// Create a Mass density measure property from the element's parameter.
-      /// </summary>
-      /// <param name="file">The IFC file.</param>
-      /// <param name="exporterIFC">The ExporterIFC.</param>
-      /// <param name="elem">The Element.</param>
-      /// <param name="revitParameterName">The name of the parameter.</param>
-      /// <param name="ifcPropertyName">The name of the property.</param>
-      /// <param name="valueType">The value type of the property.</param>
-      /// <returns>The created property handle.</returns>
-      public static IFCAnyHandle CreateMassDensityPropertyFromElement(IFCFile file, ExporterIFC exporterIFC, Element elem,
-          string revitParameterName, string ifcPropertyName, PropertyValueType valueType)
-      {
-         return CreateDoublePropertyFromElement(file, exporterIFC, elem, revitParameterName, ifcPropertyName,
-             "IfcMassDensityMeasure", UnitType.UT_MassDensity, valueType);
-      }
 
       /// <summary>
       /// Create a pressure measure property from the element's parameter.
@@ -1737,6 +1734,71 @@ namespace Revit.IFC.Export.Exporter.PropertySet
 
          return null;
       }
+
+      /// <summary>
+      /// Create a Mass density measure property from the element's parameter.
+      /// </summary>
+      /// <param name="file">The IFC file.</param>
+      /// <param name="exporterIFC">The ExporterIFC.</param>
+      /// <param name="elem">The Element.</param>
+      /// <param name="revitParameterName">The name of the parameter.</param>
+      /// <param name="ifcPropertyName">The name of the property.</param>
+      /// <param name="valueType">The value type of the property.</param>
+      /// <returns>The created property handle.</returns>
+      public static IFCAnyHandle CreateMassDensityPropertyFromElement(IFCFile file, ExporterIFC exporterIFC, Element elem,
+          string revitParameterName, string ifcPropertyName, PropertyValueType valueType)
+      {
+         return CreateDoublePropertyFromElement(file, exporterIFC, elem, revitParameterName, ifcPropertyName,
+             "IfcMassDensityMeasure", UnitType.UT_MassDensity, valueType);
+      }
+
+
+      /// <summary>
+      /// Create an Area density measure property from the element's parameter.
+      /// </summary>
+      /// <param name="file">The IFC file.</param>
+      /// <param name="exporterIFC">The ExporterIFC.</param>
+      /// <param name="elem">The Element.</param>
+      /// <param name="revitParameterName">The name of the parameter.</param>
+      /// <param name="revitBuiltInParam">The built in parameter to use, if revitParameterName isn't found.</param>
+      /// <param name="ifcPropertyName">The name of the property.</param>
+      /// <param name="valueType">The value type of the property.</param>
+      /// <returns>The created property handle.</returns>
+      public static IFCAnyHandle CreateAreaDensityPropertyFromElement(IFCFile file, ExporterIFC exporterIFC, Element elem,
+          string revitParameterName, BuiltInParameter revitBuiltInParam, string ifcPropertyName, PropertyValueType valueType)
+      {
+         IFCAnyHandle propHnd = CreateAreaDensityPropertyFromElement(file, exporterIFC, elem, revitParameterName, ifcPropertyName, valueType);
+         if (!IFCAnyHandleUtil.IsNullOrHasNoValue(propHnd))
+            return propHnd;
+
+         if (revitBuiltInParam != BuiltInParameter.INVALID)
+         {
+            string builtInParamName = LabelUtils.GetLabelFor(revitBuiltInParam);
+            propHnd = CreateAreaDensityPropertyFromElement(file, exporterIFC, elem, builtInParamName, ifcPropertyName, valueType);
+            if (!IFCAnyHandleUtil.IsNullOrHasNoValue(propHnd))
+               return propHnd;
+         }
+
+         return null;
+      }
+
+      /// <summary>
+      /// Create an Area density measure property from the element's parameter.
+      /// </summary>
+      /// <param name="file">The IFC file.</param>
+      /// <param name="exporterIFC">The ExporterIFC.</param>
+      /// <param name="elem">The Element.</param>
+      /// <param name="revitParameterName">The name of the parameter.</param>
+      /// <param name="ifcPropertyName">The name of the property.</param>
+      /// <param name="valueType">The value type of the property.</param>
+      /// <returns>The created property handle.</returns>
+      public static IFCAnyHandle CreateAreaDensityPropertyFromElement(IFCFile file, ExporterIFC exporterIFC, Element elem,
+          string revitParameterName, string ifcPropertyName, PropertyValueType valueType)
+      {
+         return CreateDoublePropertyFromElement(file, exporterIFC, elem, revitParameterName, ifcPropertyName,
+             "IfcAreaDensityMeasure", UnitType.UT_MassPerUnitArea, valueType);
+      }
+
 
       /// <summary>
       /// Create a Luminous flux measure property from the element's parameter.
@@ -2487,10 +2549,12 @@ namespace Revit.IFC.Export.Exporter.PropertySet
          IFCFile file = exporterIFC.GetFile();
          HashSet<IFCAnyHandle> quantityHnds = new HashSet<IFCAnyHandle>();
          double scaledLength = typeInfo.ScaledDepth;
-         double scaledArea = typeInfo.ScaledArea;
-         double crossSectionArea = scaledArea;
+         //According to investigation of current code the passed in typeInfo contains grossArea
+         double scaledGrossArea = typeInfo.ScaledArea;
+         double crossSectionArea = scaledGrossArea;
          double scaledOuterPerimeter = typeInfo.ScaledOuterPerimeter;
          double scaledInnerPerimeter = typeInfo.ScaledInnerPerimeter;
+         double outSurfaceArea = 0.0;
 
          if (scaledLength > MathUtil.Eps())
          {
@@ -2507,21 +2571,32 @@ namespace Revit.IFC.Export.Exporter.PropertySet
             }
          }
 
-         if (!MathUtil.AreaIsAlmostZero(scaledArea))
+         if (!MathUtil.AreaIsAlmostZero(crossSectionArea))
          {
             IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityArea(file, "CrossSectionArea", null, null, crossSectionArea);
             quantityHnds.Add(quantityHnd);
          }
 
-         if (!MathUtil.AreaIsAlmostZero(scaledArea) && !MathUtil.IsAlmostZero(scaledLength) && !MathUtil.IsAlmostZero(scaledOuterPerimeter))
+         if (!MathUtil.AreaIsAlmostZero(scaledGrossArea) && !MathUtil.IsAlmostZero(scaledLength) && !MathUtil.IsAlmostZero(scaledOuterPerimeter))
          {
             double scaledPerimeter = scaledOuterPerimeter + scaledInnerPerimeter;
-            double outSurfaceArea = scaledArea * 2 + scaledLength * scaledPerimeter;
+            //According to the IFC documentation, OuterSurfaceArea does not include the end caps area, only Length * Perimeter
+            outSurfaceArea = scaledLength * scaledPerimeter;
             IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityArea(file, "OuterSurfaceArea", null, null, outSurfaceArea);
             quantityHnds.Add(quantityHnd);
          }
 
-         double volume = 0.0;
+         // Compute GrossSurfaceArea if both CrossSectionAre and OuterSurfaceArea cannot be determined separately
+         if (MathUtil.AreaIsAlmostZero(crossSectionArea) && MathUtil.AreaIsAlmostZero(outSurfaceArea))
+         {
+            double scaledPerimeter = scaledOuterPerimeter + scaledInnerPerimeter;
+            double grossSurfaceArea = scaledGrossArea * 2 + scaledLength * scaledPerimeter;
+            IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityArea(file, "GrossSurfaceArea", null, null, grossSurfaceArea);
+            quantityHnds.Add(quantityHnd);
+         }
+
+         double grossVolume = scaledLength * scaledGrossArea;
+         double netVolume = 0.0;
          if (element != null)
          {
             // If we are splitting columns, we will look at the actual geometry used when exporting this segment
@@ -2533,26 +2608,28 @@ namespace Revit.IFC.Export.Exporter.PropertySet
                   // We don't suport calculating the volume of Meshes at this time.
                   if (geomObj is Mesh)
                   {
-                     volume = 0.0;
+                     netVolume = 0.0;
                      break;
                   }
 
                   if (geomObj is Solid)
-                     volume += (geomObj as Solid).Volume;
+                     netVolume += (geomObj as Solid).Volume;
                }
             }
             else
-               ParameterUtil.GetDoubleValueFromElement(element, BuiltInParameter.HOST_VOLUME_COMPUTED, out volume);
-            volume = UnitUtil.ScaleVolume(volume);
+               ParameterUtil.GetDoubleValueFromElement(element, BuiltInParameter.HOST_VOLUME_COMPUTED, out netVolume);
+            netVolume = UnitUtil.ScaleVolume(netVolume);
          }
 
-         // If we didn't calculate the volume above, but we did pass in a non-zero scaled length and area, calculate the volume.
-         if (MathUtil.VolumeIsAlmostZero(volume))
-            volume = scaledLength * scaledArea;
-
-         if (!MathUtil.VolumeIsAlmostZero(volume))
+         if (!MathUtil.VolumeIsAlmostZero(grossVolume))
          {
-            IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityVolume(file, "GrossVolume", null, null, volume);
+            IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityVolume(file, "GrossVolume", null, null, grossVolume);
+            quantityHnds.Add(quantityHnd);
+         }
+
+         if (!MathUtil.VolumeIsAlmostZero(netVolume))
+         {
+            IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityVolume(file, "NetVolume", null, null, netVolume);
             quantityHnds.Add(quantityHnd);
          }
 
@@ -2643,7 +2720,7 @@ namespace Revit.IFC.Export.Exporter.PropertySet
           IList<Solid> solids, IList<Mesh> meshes,
           IFCAnyHandle wallHnd,
           double scaledLength, double scaledDepth, double scaledFootPrintArea,
-          IFCExtrusionCreationData extrustionData)
+          IFCExtrusionCreationData extrustionData, HashSet<IFCAnyHandle> widthAsComplexQty = null)
       {
          IFCFile file = exporterIFC.GetFile();
          HashSet<IFCAnyHandle> quantityHnds = new HashSet<IFCAnyHandle>();
@@ -2658,6 +2735,17 @@ namespace Revit.IFC.Export.Exporter.PropertySet
             IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityLength(file, "Length", null, null, scaledLength);
             quantityHnds.Add(quantityHnd);
          }
+         else if (wallElement.Location != null)
+         {
+            Curve wallAxis = (wallElement.Location as LocationCurve).Curve;
+            if (wallAxis != null)
+            {
+               double axisLength = UnitUtil.ScaleLength(wallAxis.Length);
+               IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityLength(file, "Length", null, null, axisLength);
+               quantityHnds.Add(quantityHnd);
+            }
+         }
+
 
          double scaledWidth = 0.0;
          if (wallElement != null)
@@ -2665,8 +2753,15 @@ namespace Revit.IFC.Export.Exporter.PropertySet
             scaledWidth = UnitUtil.ScaleLength(wallElement.Width);
             if (!MathUtil.IsAlmostZero(scaledWidth))
             {
-               IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityLength(file, "Width", null, null, scaledWidth);
-               quantityHnds.Add(quantityHnd);
+               if (widthAsComplexQty == null)
+               {
+                  IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityLength(file, "Width", null, null, scaledWidth);
+                  quantityHnds.Add(quantityHnd);
+               }
+               else
+               {
+                  quantityHnds.UnionWith(widthAsComplexQty);
+               }
             }
          }
 
@@ -2676,54 +2771,62 @@ namespace Revit.IFC.Export.Exporter.PropertySet
             quantityHnds.Add(quantityHnd);
          }
 
-         if (scaledDepth > MathUtil.Eps() && !MathUtil.IsAlmostZero(scaledLength) && !MathUtil.IsAlmostZero(scaledWidth))
-         {
-            double netVolume = scaledLength * scaledWidth * scaledDepth;
-            IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityVolume(file, "NetVolume", null, null, netVolume);
-            quantityHnds.Add(quantityHnd);
-         }
-
-         if (scaledDepth > MathUtil.Eps() && !MathUtil.IsAlmostZero(scaledLength))
-         {
-            double netSideArea = scaledLength * scaledDepth;
-            IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityArea(file, "NetSideArea", null, null, netSideArea);
-            quantityHnds.Add(quantityHnd);
-         }
-
-         double area = 0;
+         double netArea = 0;
+         double grossArea = 0;
          double volume = 0;
 
-         if (ExporterCacheManager.ExportOptionsCache.WallAndColumnSplitting)
+         // We will only assign the area if we have all solids that we are exporting; we won't bother calcuting values for Meshes.
+         if (solids != null && (meshes == null || meshes.Count == 0))
          {
-            // We will only assign the area if we have all solids that we are exporting; we won't bother calcuting values for Meshes.
-            if (solids != null && (meshes == null || meshes.Count == 0))
+            foreach (Solid solid in solids)
             {
-               foreach (Solid solid in solids)
+               double largestFaceNetArea = 0.0;
+               double largestFaceGrossArea = 0.0;
+               foreach (Face face in solid.Faces)
                {
-                  area += solid.SurfaceArea;
-                  volume += solid.Volume;
+                  XYZ fNormal = face.ComputeNormal(new UV(0, 0));
+                  if (MathUtil.IsAlmostZero(fNormal.Z))
+                  {
+                     if (face.Area > largestFaceNetArea)
+                        largestFaceNetArea = face.Area;      // collecting largest face on the XY plane. It will be used for NetArea
+
+                     IList<CurveLoop> fCurveLoops = face.GetEdgesAsCurveLoops();
+                     double grArea = ExporterIFCUtils.ComputeAreaOfCurveLoops(new List<CurveLoop>() { fCurveLoops[0] });
+                     if (grArea > largestFaceGrossArea)
+                        largestFaceGrossArea = grArea;
+                  }
                }
-            }
-         }
-         else
-         {
-            if (wallElement != null)
-            {
-               ParameterUtil.GetDoubleValueFromElement(wallElement, BuiltInParameter.HOST_AREA_COMPUTED, out area);
-               ParameterUtil.GetDoubleValueFromElement(wallElement, BuiltInParameter.HOST_VOLUME_COMPUTED, out volume);
+               netArea += largestFaceNetArea;
+               grossArea += largestFaceGrossArea;
+               volume += solid.Volume;
             }
          }
 
-         if (!MathUtil.IsAlmostZero(area))
+         netArea = UnitUtil.ScaleArea(netArea);
+         grossArea = UnitUtil.ScaleArea(grossArea);
+         volume = UnitUtil.ScaleVolume(volume);
+
+         if (scaledDepth > MathUtil.Eps() && !MathUtil.IsAlmostZero(scaledWidth) && !MathUtil.IsAlmostZero(grossArea))
          {
-            area = UnitUtil.ScaleArea(area);
-            IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityArea(file, "NetSideArea", null, null, area);
+            double grossVolume = UnitUtil.ScaleVolume(UnitUtil.UnscaleLength(scaledWidth) * UnitUtil.UnscaleArea(grossArea));
+            IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityVolume(file, "GrossVolume", null, null, grossVolume);
+            quantityHnds.Add(quantityHnd);
+         }
+
+         if (!MathUtil.IsAlmostZero(grossArea))
+         {
+            IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityArea(file, "GrossSideArea", null, null, grossArea);
+            quantityHnds.Add(quantityHnd);
+         }
+
+         if (!MathUtil.IsAlmostZero(netArea))
+         {
+            IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityArea(file, "NetSideArea", null, null, netArea);
             quantityHnds.Add(quantityHnd);
          }
 
          if (!MathUtil.IsAlmostZero(volume))
          {
-            volume = UnitUtil.ScaleVolume(volume);
             IFCAnyHandle quantityHnd = IFCInstanceExporter.CreateQuantityVolume(file, "NetVolume", null, null, volume);
             quantityHnds.Add(quantityHnd);
          }
@@ -2744,7 +2847,7 @@ namespace Revit.IFC.Export.Exporter.PropertySet
       /// <param name="exporterIFC">The exporter.</param>
       /// <param name="elemHnd">The element handle.</param>
       /// <param name="quantityHnds">The quantity handles.</param>
-      static void CreateAndRelateBaseQuantities(IFCFile file, ExporterIFC exporterIFC, IFCAnyHandle elemHnd, HashSet<IFCAnyHandle> quantityHnds, string quantitySetName = null)
+      static public void CreateAndRelateBaseQuantities(IFCFile file, ExporterIFC exporterIFC, IFCAnyHandle elemHnd, HashSet<IFCAnyHandle> quantityHnds, string quantitySetName = null)
       {
          if (quantityHnds.Count > 0)
          {
@@ -2936,8 +3039,7 @@ namespace Revit.IFC.Export.Exporter.PropertySet
                         {
                            double value = parameter.AsDouble();
                            IFCAnyHandle propertyHandle = null;
-                           bool assigned = true;
-
+                           
                            // There are many different ParameterTypes in Revit that share the same unit dimensions, but that
                            // have potentially different display units (e.g. Bar Diameter could be in millimeters while the project 
                            // default length parameter is in meters.)  For now, we will only support one unit type.  At a later
@@ -3147,6 +3249,14 @@ namespace Revit.IFC.Export.Exporter.PropertySet
                                         PropertyValueType.SingleValue, null);
                                     break;
                                  }
+                              case ParameterType.MomentOfInertia:
+                                 {
+                                    double scaledValue = UnitUtil.ScaleDouble(UnitType.UT_Moment_of_Inertia, value);
+                                    IFCData momentOfInertiaData = IFCDataUtil.CreateAsMeasure(scaledValue, "IfcMomentofInertiaMeasure");
+                                    propertyHandle = CreateCommonProperty(file, parameterCaption, momentOfInertiaData,
+                                        PropertyValueType.SingleValue, null);
+                                    break;
+                                 }
                               case ParameterType.PipingVolume:
                               case ParameterType.ReinforcementVolume:
                               case ParameterType.SectionModulus:
@@ -3158,12 +3268,21 @@ namespace Revit.IFC.Export.Exporter.PropertySet
                                     break;
                                  }
                               default:
-                                 assigned = false;
-                                 break;
+                                 {
+                                    double scaledValue = value;
+                                    try
+                                    {
+                                       scaledValue = UnitUtils.ConvertFromInternalUnits(value, parameter.DisplayUnitType);
+                                    }
+                                    catch 
+                                    { 
+                                       // GetUnitTypeId() can fail for reasons that don't seem to be knowable in
+                                       // advance, so we won't convert in these cases.
+                                    }
+                                    propertyHandle = CreateRealPropertyFromCache(file, parameterCaption, scaledValue, PropertyValueType.SingleValue);
+                                    break;
+                                 }
                            }
-
-                           if (!assigned)
-                              propertyHandle = CreateRealPropertyFromCache(file, parameterCaption, value, PropertyValueType.SingleValue);
 
                            if (!IFCAnyHandleUtil.IsNullOrHasNoValue(propertyHandle))
                               currPropertiesForGroup.Add(propertyHandle);
@@ -3261,7 +3380,8 @@ namespace Revit.IFC.Export.Exporter.PropertySet
          PropertyUtil.CreateInternalRevitPropertySets(exporterIFC, elementType, associatedObjectIds);
 
          TypePropertyInfo additionalPropertySets = null;
-         if (ExporterCacheManager.TypePropertyInfoCache.TryGetValue(elementType.Id, out additionalPropertySets))
+         ElementId typeId = elementType.Id;
+         if (ExporterCacheManager.TypePropertyInfoCache.TryGetValue(typeId, out additionalPropertySets))
             propertySets.UnionWith(additionalPropertySets.PropertySets);
 
          if (existingPropertySets != null && existingPropertySets.Count > 0)
@@ -3279,6 +3399,11 @@ namespace Revit.IFC.Export.Exporter.PropertySet
             IList<PropertySetDescription> currPsetsToCreate = ExporterUtil.GetCurrPSetsToCreate(prodTypeHnd, psetsToCreate);
             foreach (PropertySetDescription currDesc in currPsetsToCreate)
             {
+               // Last conditional check: if the property set comes from a ViewSchedule, check if the element is in the schedule.
+               if (currDesc.ViewScheduleId != ElementId.InvalidElementId)
+                  if (!ExporterCacheManager.ViewScheduleElementCache[currDesc.ViewScheduleId].Contains(typeId))
+                     continue;
+
                ISet<IFCAnyHandle> props = currDesc.ProcessEntries(file, exporterIFC, null, elementType, elementType, prodTypeHnd);
                if (props.Count > 0)
                {

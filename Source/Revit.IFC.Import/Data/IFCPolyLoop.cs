@@ -68,7 +68,7 @@ namespace Revit.IFC.Import.Data
          int numVertices = Polygon.Count;
          if (numVertices > 1)
          {
-            if (Polygon[0].IsAlmostEqualTo(Polygon[numVertices - 1]))
+            if (MathUtil.IsAlmostEqualAbsolute(Polygon[0], Polygon[numVertices - 1]))
             {
                // LOG: Warning: #: First and last points are almost identical, removing extra point.
                Polygon.RemoveAt(numVertices - 1);
@@ -77,14 +77,25 @@ namespace Revit.IFC.Import.Data
          }
 
          if (numVertices < 3)
-            throw new InvalidOperationException("#" + ifcPolyLoop.StepId + ": Polygon attribute has only " + numVertices + " vertices, 3 expected.");
+         {
+            // This used to throw an error.  However, we found files that threw this error
+            // thousands of times, causing incredibly slow links.  Instead, null out the
+            // data and log an error.
+            Polygon = null;
+            Importer.TheLog.LogError(ifcPolyLoop.StepId, "Polygon attribute has only " + numVertices + " vertices, 3 expected.", false);
+         }
       }
 
       override protected CurveLoop GenerateLoop()
       {
          IList<XYZ> polygon = Polygon;
          if (polygon == null)
-            throw new InvalidOperationException("#" + Id + ": missing polygon, ignoring.");
+         {
+            // This used to throw an error.  However, we found files that threw this error
+            // thousands of times, causing incredibly slow links.  Instead, null out the
+            // data and log an error.
+            Importer.TheLog.LogError(Id, "missing polygon, ignoring.", false);
+         }
 
          int numVertices = Polygon.Count;
          if (numVertices < 3)

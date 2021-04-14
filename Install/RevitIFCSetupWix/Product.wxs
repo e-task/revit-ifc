@@ -2,7 +2,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
 
-   <Product Id="3A997559-7A56-4E1E-BCF3-66AE63E8CBC9" Name="Revit IFC 2019" Language="1033" Version="19.3.0.1" Manufacturer="Autodesk" UpgradeCode="3B9B4478-8A82-48FF-A8DD-35021609D811">
+   <Product Id="7BDA20C7-7A46-4352-A459-98B9D607E86C" Name="Revit IFC 2019" Language="1033" Version="19.5.1.0" Manufacturer="Autodesk" UpgradeCode="4BABAF65-05E8-474A-872C-471AC796C6BE">
       <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
 
       <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
@@ -162,14 +162,8 @@
          <Component Id = "COMP_IFC4_XSD" Guid="51B549A3-DCB2-412B-9D4D-1B72D901D2B3">
             <File Id ="FILE_IFC4_XSD" Name="IFC4.xsd" Source="$(var.ProjectDir)..\Program Files to Install\IFC4.xsd" KeyPath="yes" />
          </Component>
-         <Component Id = "COMP_IFC_Shared_Parameters_RevitIFCBuiltIn_TXT" Guid="ADFF1BAB-14BC-4722-988E-4C37398973E1">
-            <File Id ="FILE_IFC_Shared_Parameters_RevitIFCBuiltIn" Name="IFC Shared Parameters-RevitIFCBuiltIn.txt" Source="$(var.ProjectDir)..\Program Files to Install\IFC Shared Parameters-RevitIFCBuiltIn.txt" KeyPath="yes" />
-         </Component>
          <Component Id = "COMP_IFC_Shared_Parameters_RevitIFCBuiltIn_ALL_TXT" Guid="BD6EB78A-7AED-40C3-9B24-AA74652A3C25">
             <File Id ="FILE_IFC_Shared_Parameters_RevitIFCBuiltIn_ALL" Name="IFC Shared Parameters-RevitIFCBuiltIn_ALL.txt" Source="$(var.ProjectDir)..\Program Files to Install\IFC Shared Parameters-RevitIFCBuiltIn_ALL.txt" KeyPath="yes" />
-         </Component>
-         <Component Id = "COMP_IFC_Shared_Parameters_RevitIFCBuiltIn_TYPE_TXT" Guid="46AF7108-ED20-4AE8-9E08-49A49D04E22D">
-            <File Id ="FILE_IFC_Shared_Parameters_RevitIFCBuiltIn_TYPE" Name="IFC Shared Parameters-RevitIFCBuiltIn-Type.txt" Source="$(var.ProjectDir)..\Program Files to Install\IFC Shared Parameters-RevitIFCBuiltIn-Type.txt" KeyPath="yes" />
          </Component>
          <Component Id = "COMP_IFC_Shared_Parameters_RevitIFCBuiltIn_TYPE_ALL_TXT" Guid="FF5BBFF3-033E-4742-8EAE-5BEAE4FF8C81">
             <File Id ="FILE_IFC_Shared_Parameters_RevitIFCBuiltIn_TYPE_ALL" Name="IFC Shared Parameters-RevitIFCBuiltIn-Type_ALL.txt" Source="$(var.ProjectDir)..\Program Files to Install\IFC Shared Parameters-RevitIFCBuiltIn-Type_ALL.txt" KeyPath="yes" />
@@ -207,6 +201,12 @@
          </Component>
          <Component Id = "COMP_IFC_16_PNG" Guid="E6CF83A5-A19C-4190-9A88-D54C390A6971">
             <File Id ="FILE_IFC_16_PNG" Name="IFCExporter_16.png" Source="$(var.ProjectDir)..\Program Files to Install\bundle\Contents\Resources\IFCExporter_16.png" KeyPath="yes" />
+         </Component>
+         <Component Id = "COMP_IFC4RV_A_CERT" Guid="EDC0912A-5AA0-44D6-8272-E8BBB4A99B3B">
+            <File Id ="FILE_IFC4RV_A_CERT" Name="Software Certification Certificate Revit - Architectural export ER.png" Source="$(var.ProjectDir)..\Program Files to Install\bundle\Contents\Resources\Software Certification Certificate Revit - Architectural export ER.png" KeyPath="yes" />
+         </Component>
+         <Component Id = "COMP_IFC4RV_S_CERT" Guid="0D2A0278-2D37-4C20-89C0-5D68AD4A06B3">
+            <File Id ="FILE_IFC4RV_S_CERT" Name="Software Certification Certificate Revit - Structural export ER.png" Source="$(var.ProjectDir)..\Program Files to Install\bundle\Contents\Resources\Software Certification Certificate Revit - Structural export ER.png" KeyPath="yes" />
          </Component>
       </ComponentGroup>
 

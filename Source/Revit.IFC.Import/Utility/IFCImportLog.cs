@@ -30,7 +30,6 @@ using Revit.IFC.Common.Enums;
 using Revit.IFC.Import.Data;
 using Revit.IFC.Import.Properties;
 using UnitSystem = Autodesk.Revit.DB.DisplayUnit;
-using UnitName = Autodesk.Revit.DB.DisplayUnitType;
 
 namespace Revit.IFC.Import.Utility
 {
@@ -80,7 +79,7 @@ namespace Revit.IFC.Import.Utility
 
       private IDictionary<CreatedElementsKey, int> m_CreatedElements = new SortedDictionary<CreatedElementsKey, int>();
 
-      private ISet<KeyValuePair<int, string>> m_AlreadyLoggedErrors = new HashSet<KeyValuePair<int, string>>();
+      private ISet<Tuple<int, string>> m_AlreadyLoggedErrors = new HashSet<Tuple<int, string>>();
 
       private ISet<string> m_LogOnceWarnings = new HashSet<string>();
 
@@ -181,7 +180,7 @@ namespace Revit.IFC.Import.Utility
                errorMsg = "#" + id + ": ERROR: " + msg;
 
             // Don't bother logging an error that doesn't throw, and has already been identically filed.
-            KeyValuePair<int, string> newError = new KeyValuePair<int, string>(id, msg);
+            Tuple<int, string> newError = Tuple.Create(id, msg);
             if (!m_AlreadyLoggedErrors.Contains(newError))
             {
                WriteLine(errorMsg);
@@ -613,9 +612,13 @@ namespace Revit.IFC.Import.Utility
       /// Create a new log from a file name.
       /// </summary>
       /// <param name="logFileName">The file name.</param>
-      static public IFCImportLog CreateLog(string logFileName, string extension)
+      static public IFCImportLog CreateLog(string logFileName, string extension, bool createLogFile)
       {
          IFCImportLog importLog = new IFCImportLog();
+
+         // If we are maximizing performance, don't create a log file.
+         if (!createLogFile)
+            return importLog;
 
          if (!CreateLogInternal(importLog, logFileName + "." + extension))
          {

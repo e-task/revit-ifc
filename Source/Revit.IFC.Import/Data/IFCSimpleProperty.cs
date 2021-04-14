@@ -54,7 +54,7 @@ namespace Revit.IFC.Import.Data
       }
 
       /// <summary>
-      /// Returns the property value as a string, for SetValueString().
+      /// Returns the property value as a string, for Set().
       /// </summary>
       /// <returns>The property value as a string.</returns>
       public override string PropertyValueAsString()
@@ -204,7 +204,7 @@ namespace Revit.IFC.Import.Data
                    (propertyValue.Type == IFCDataPrimitiveType.Integer) || (propertyValue.Type == IFCDataPrimitiveType.Double))
                {
                   string unitTypeName;
-                  UnitType unitType = IFCDataUtil.GetUnitTypeFromData(propertyValue.Value, UnitType.UT_Undefined, out unitTypeName);
+                  UnitType unitType = IFCDataUtil.GetUnitTypeFromData(propertyValue.Value, UnitType.UT_Number, out unitTypeName);
                   if (unitType != UnitType.UT_Undefined)
                      ifcUnit = IFCImportFile.TheFile.IFCUnits.GetIFCProjectUnit(unitType);
                   else

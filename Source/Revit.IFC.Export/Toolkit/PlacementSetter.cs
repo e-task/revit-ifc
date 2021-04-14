@@ -24,6 +24,8 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Revit.IFC.Common.Utility;
 using Revit.IFC.Export.Utility;
+using Revit.IFC.Export.Exporter;
+using Revit.IFC.Common.Enums;
 
 namespace Revit.IFC.Export.Toolkit
 {
@@ -32,58 +34,32 @@ namespace Revit.IFC.Export.Toolkit
    /// </summary>
    /// <remarks>
    ///    This class is intended to maintain the placement for the duration that it is needed.
-   ///    To ensure that the lifetime of the object is correctly managed, you should declare an instance of this class as a part of a 'using' statement in C# or
-   ///    similar construct in other languages.
+   ///    To ensure that the lifetime of the object is correctly managed, you should declare an instance of this class
+   ///    as a part of a 'using' statement in C# or similar construct in other languages.
    /// </remarks>
    public class PlacementSetter : IDisposable
    {
-      ExporterIFC m_ExporterIFC = null;
-      ElementId m_LevelId = ElementId.InvalidElementId;
-      IFCLevelInfo m_LevelInfo = null;
-      IFCAnyHandle m_LocalPlacement = null;
-      double m_Offset = 0;
-
-      protected ExporterIFC ExporterIFC
-      {
-         get { return m_ExporterIFC; }
-         set { m_ExporterIFC = value; }
-      }
+      protected ExporterIFC ExporterIFC { get; set; } = null;
 
       /// <summary>
       ///    The handle to the IfcLocalPlacement stored with this setter.
       /// </summary>
-      public IFCAnyHandle LocalPlacement
-      {
-         get { return m_LocalPlacement; }
-         protected set { m_LocalPlacement = value; }
-      }
+      public IFCAnyHandle LocalPlacement { get; protected set; } = null;
 
       /// <summary>
       ///    The offset to the level.
       /// </summary>
-      public double Offset
-      {
-         get { return m_Offset; }
-         protected set { m_Offset = value; }
-      }
+      public double Offset { get; protected set; } = 0.0;
 
       /// <summary>
       ///    The level id associated with the element and placement.
       /// </summary>
-      public ElementId LevelId
-      {
-         get { return m_LevelId; }
-         protected set { m_LevelId = value; }
-      }
+      public ElementId LevelId { get; protected set; } = ElementId.InvalidElementId;
 
       /// <summary>
       ///    The level info related to the element's local placement.
       /// </summary>
-      public IFCLevelInfo LevelInfo
-      {
-         get { return m_LevelInfo; }
-         protected set { m_LevelInfo = value; }
-      }
+      public IFCLevelInfo LevelInfo { get; protected set; } = null;
 
       /// <summary>
       ///    Creates a new placement setter instance for the given element.
@@ -203,18 +179,35 @@ namespace Revit.IFC.Export.Toolkit
       }
 
       /// <summary>
+      ///   Obtains the handle to an alternate local placement for a room-related element.
+      /// </summary>
+      /// <param name="roomHnd">Handle to the element.</param>
+      /// <param name="placementToUse">The handle to the IfcLocalPlacement to use for the given room-related element.</param>
+      /// <returns>  
+      /// </returns>
+      private void UpdatePlacement(IFCAnyHandle roomHnd, out IFCAnyHandle placement)
+      {
+         placement = LocalPlacement;
+
+         if (roomHnd == null)
+            return;
+
+         IFCAnyHandle roomPlacementHnd = IFCAnyHandleUtil.GetObjectPlacement(roomHnd);
+         Transform trf = ExporterIFCUtils.GetRelativeLocalPlacementOffsetTransform(placement, roomPlacementHnd);
+         placement = ExporterUtil.CreateLocalPlacement(ExporterIFC.GetFile(), roomPlacementHnd, trf.Origin, trf.BasisZ, trf.BasisX);
+      }
+
+      /// <summary>
       ///    Obtains the handle to an alternate local placement for a room-related element.
       /// </summary>
       /// <param name="element">The element.</param>
-      /// <param name="placementToUse">The handle to the IfcLocalPlacement to use for the given room-related element.</param>
       /// <returns>
       ///    The id of the spatial element related to the element.  InvalidElementId if the element
       ///    is not room-related, in which case the output will contain the placement handle from
       ///    LocalPlacement.
       /// </returns>
-      public ElementId UpdateRoomRelativeCoordinates(Element elem, out IFCAnyHandle placement)
+      private ElementId GetIdInSpatialStructure(Element elem)
       {
-         placement = LocalPlacement;
          FamilyInstance famInst = elem as FamilyInstance;
          if (famInst == null)
             return ElementId.InvalidElementId;
@@ -247,15 +240,82 @@ namespace Revit.IFC.Export.Toolkit
          if (roomOrSpace == null || roomOrSpace.Location == null)
             return ElementId.InvalidElementId;
 
-         ElementId roomId = roomOrSpace.Id;
-         IFCAnyHandle roomHnd = ExporterCacheManager.SpaceInfoCache.FindSpaceHandle(roomId);
+         return roomOrSpace.Id;
+      }
+
+      /// <summary>
+      ///    Obtains the handle to an alternate local placement for a room-related element.
+      /// </summary>
+      /// <param name="element">The element.</param>
+      /// <param name="placementToUse">The handle to the IfcLocalPlacement to use for the given room-related element.</param>
+      /// <returns>
+      ///    The id of the spatial element related to the element.  InvalidElementId if the element
+      ///    is not room-related, in which case the output will contain the placement handle from
+      ///    LocalPlacement.
+      /// </returns>
+      public ElementId UpdateRoomRelativeCoordinates(Element elem, out IFCAnyHandle placement)
+      {
+         placement = LocalPlacement;
+         ElementId roomId = ElementId.InvalidElementId;
+
+         if (elem == null)
+            return roomId;
+
+         IFCAnyHandle roomHnd = null;
+         GroupInfo groupInfo;
+         if (ExporterCacheManager.GroupCache.TryGetValue(elem.Id, out groupInfo))
+         {
+            if (groupInfo != null && groupInfo.ElementHandles != null && groupInfo.ElementHandles.Count != 0)
+            {
+               Document document = elem.Document;
+               if (document == null)
+                  return roomId;
+               
+               bool initialized = false;
+               foreach (IFCAnyHandle handleElem in groupInfo.ElementHandles)
+               {
+                  ElementId elementId = ExporterCacheManager.HandleToElementCache.Find(handleElem);
+                  Element element = document.GetElement(elementId);
+                  if (element == null)
+                     continue;
+                  
+                  ElementId currentRoomId = GetIdInSpatialStructure(element);
+                  if (currentRoomId == ElementId.InvalidElementId)
+                     return ElementId.InvalidElementId;
+                  
+                  if (!initialized)
+                  { 
+                     roomId = currentRoomId;
+                     initialized = true;
+                  }
+                  
+                  if (currentRoomId != roomId)
+                     return ElementId.InvalidElementId;
+               }
+
+               roomHnd = ExporterCacheManager.SpaceInfoCache.FindSpaceHandle(roomId);
+
+               if (IFCAnyHandleUtil.IsNullOrHasNoValue(roomHnd))
+                  return ElementId.InvalidElementId;
+
+               UpdatePlacement(roomHnd, out placement);
+
+               return roomId;
+            }
+         }
+
+         roomId = GetIdInSpatialStructure(elem);
+
+         if (roomId == ElementId.InvalidElementId)
+            return ElementId.InvalidElementId;
+
+         roomHnd = ExporterCacheManager.SpaceInfoCache.FindSpaceHandle(roomId);
 
          if (IFCAnyHandleUtil.IsNullOrHasNoValue(roomHnd))
             return ElementId.InvalidElementId;
 
-         IFCAnyHandle roomPlacementHnd = IFCAnyHandleUtil.GetObjectPlacement(roomHnd);
-         Transform trf = ExporterIFCUtils.GetRelativeLocalPlacementOffsetTransform(placement, roomPlacementHnd);
-         placement = ExporterUtil.CreateLocalPlacement(ExporterIFC.GetFile(), roomPlacementHnd, trf.Origin, trf.BasisZ, trf.BasisX);
+         UpdatePlacement(roomHnd, out placement);
+
          return roomId;
       }
 
@@ -375,10 +435,12 @@ namespace Revit.IFC.Export.Toolkit
 
                   newLevelId = hostElem != null ? hostElem.LevelId : ElementId.InvalidElementId;
 
-                  if (newLevelId == ElementId.InvalidElementId)
-                  {
-                     ExporterIFCUtils.GetLevelIdByHeight(exporterIFC, hostElem);
-                  }
+                  // TODO: This code clearly does nothing, and there is code below that probably does a better 
+                  // job of it.  Fix by adding newLevelId = ..., or delete this entirely?
+                  //if (newLevelId == ElementId.InvalidElementId)
+                  //{
+                     //ExporterIFCUtils.GetLevelIdByHeight(exporterIFC, hostElem);
+                  //}
                }
             }
 
@@ -395,7 +457,7 @@ namespace Revit.IFC.Export.Toolkit
 
                if (useOverrideOrigin)
                {
-                  originToUse = overrideOrigin; 
+                  originToUse = overrideOrigin;
                }
                else
                {
@@ -416,6 +478,7 @@ namespace Revit.IFC.Export.Toolkit
                   }
                }
 
+
                // The original heuristic here was that the origin determined the level containment based on exact location:
                // if the Z of the origin was higher than the current level but lower than the next level, it was contained
                // on that level.
@@ -432,7 +495,7 @@ namespace Revit.IFC.Export.Toolkit
                   {
                      Element levelElem = doc.GetElement(levelInfoPair.Key);
                      if (levelElem == null || !(levelElem is Level))
-                           continue;
+                        continue;
                   }
 
                   IFCLevelInfo levelInfo = levelInfoPair.Value;
