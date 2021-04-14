@@ -58,11 +58,11 @@
   <ItemGroup>
     <Reference Include="RevitAPI, Version=19.2.0.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\..\Program Files\Autodesk\Revit 2019\RevitAPI.dll</HintPath>
+      <HintPath>C:\Program Files\Autodesk\Revit 2019\RevitAPI.dll</HintPath>
     </Reference>
     <Reference Include="RevitAPIIFC, Version=19.2.0.0, Culture=neutral, processorArchitecture=AMD64">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\..\Program Files\Autodesk\Revit 2019\RevitAPIIFC.dll</HintPath>
+      <HintPath>C:\Program Files\Autodesk\Revit 2019\RevitAPIIFC.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Web.Extensions" />
