@@ -61,10 +61,6 @@
     <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="GeometryGymIFC, Version=0.0.22.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\..\packages\GeometryGymIFC.0.0.22\lib\net45\GeometryGymIFC.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
     <Reference Include="GeometryGymIFC, Version=0.0.21.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\..\packages\GeometryGymIFC.0.0.21\lib\net45\GeometryGymIFC.dll</HintPath>
     </Reference>
@@ -355,7 +351,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
-    <None Include="packages.config" />
+    <None Include="packages.config">
+      <SubType>Designer</SubType>
+    </None>
     <Antlr4 Include="Utility\ParamExprGrammar.g4">
       <Generator>MSBuild:Compile</Generator>
       <CustomToolNamespace>Revit.IFC.Export.Utility</CustomToolNamespace>
