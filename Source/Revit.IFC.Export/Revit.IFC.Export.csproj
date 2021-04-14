@@ -350,10 +350,6 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <None Include="app.config" />
-    <None Include="packages.config">
-      <SubType>Designer</SubType>
-    </None>
     <Antlr4 Include="Utility\ParamExprGrammar.g4">
       <Generator>MSBuild:Compile</Generator>
       <CustomToolNamespace>Revit.IFC.Export.Utility</CustomToolNamespace>
