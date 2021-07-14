@@ -6098,28 +6098,34 @@ namespace Revit.IFC.Export.Toolkit
          // Jo64
          if (ExporterCacheManager.ExportOptionsCache.DoorBelongsToRoom.GetValueOrDefault())
          {
-               var familyInstance = element as FamilyInstance;
-               if (familyInstance != null)
+            var familyInstance = element as FamilyInstance;
+            var phase = ExporterCacheManager.ExportOptionsCache.ActivePhaseElement;
+            if (familyInstance != null && phase != null)
+            {
+               try
                {
-                  ElementId roomId;
-
-                  var toRoomId = ((FamilyInstance)element).ToRoom?.Id;
-                  if (toRoomId != null)
-                     roomId = toRoomId;
-                  else
-                     roomId = ((FamilyInstance)element).Room?.Id;
-
-                  //var fromRoomId = ((FamilyInstance)element).FromRoom?.Id;
-                  if (roomId != null)
+                  ElementId roomId = ElementId.InvalidElementId;
+                  //var toRoomId = familyInstance.ToRoom?.Id;
+                  var toRoomId = familyInstance.get_ToRoom(phase)?.Id;
+                  if (toRoomId != null && toRoomId != ElementId.InvalidElementId)
                   {
-                     bool containedInSpace = (roomId != ElementId.InvalidElementId);
-                     if (containedInSpace)
-                     {
-                           ExporterCacheManager.DoorBelongsToRoomCache.Add(door);
-                           ExporterCacheManager.SpaceInfoCache.RelateToSpace(roomId, door);
-                     }
+                     roomId = toRoomId;
+                  }
+                  else
+                  {
+                     //roomId = familyInstance.Room?.Id;
+                     roomId = familyInstance.get_Room(phase)?.Id;
+                  }
+
+                  bool containedInSpace = roomId != null && roomId != ElementId.InvalidElementId;
+                  if (containedInSpace)
+                  {
+                     ExporterCacheManager.DoorBelongsToRoomCache.Add(door);
+                     ExporterCacheManager.SpaceInfoCache.RelateToSpace(roomId, door);
                   }
                }
+               catch { }
+            }
          }
          // ------------------------------------------------------------------------------
 
