@@ -1,3 +1,4 @@
+![CodeOwner](https://img.shields.io/badge/CodeOwner-Joachim-cyan)
 # IFC for Revit (revit-ifc)
 
 This is the .NET code used by Revit 2019 and Revit LT 2019 to support IFC. The open source version can override the version that comes standard with shipped Revit. This contains the source code for Link IFC, IFC export and the IFC export UI.
