@@ -1,0 +1,85 @@
+#!/usr/bin/python
+#
+# This script is intended to be run as a commit-msg script in a GIT
+# repository and check the presence of JIRA ticket numbers in the log messages.
+#
+#    - NO_JIRA_TICKET_MESSAGE (an error message returned to the user when the
+#      git commit message doesn't contain a jira ticket);
+#    - INVALID_JIRA_TICKET_MESSAGE (an error message returned to the user when
+#      the git commit message contains an invalid jira ticket);
+#    - TOO_MANY_JIRA_TICKETS_MESSAGE (an error message returned to the user when
+#      the git commit message contains several jira tickets);
+#    - NO_ACCESS_TO_JIRA_SERVER (an error message returned to the user when the
+#      Jira server returns an 'Access denied' error);
+#    - ERROR_ACCESSING_THE_JIRA_SERVER (an error message returned to the user
+#      when an error occurred accessing the Jira server);
+#    - JIRA_HOST_NAME (hostname of the JIRA server to look up issues);
+#    - JIRA_USER (name of the JIRA user who has permission to look up issues in
+#      the JIRA server);
+#    - JIRA_PASSWORD (password of the JIRA user described above);
+ 
+import sys
+import re
+import httplib
+import base64
+ 
+NO_JIRA_TICKET_MESSAGE = \
+'No Jira ticket present in the commit message. \
+Please include the JIRA ticket enclosed in brackets: [ABC-789].'
+INVALID_JIRA_TICKET_MESSAGE = \
+'Proper Jira ticket syntax was found, but none were valid tickets. \
+Please check the tickets and try again.'
+TOO_MANY_JIRA_TICKETS_MESSAGE = \
+'Only 1 Jira ticket is allowed per commit. Please commit only 1 change at a time.'
+NO_ACCESS_TO_JIRA_SERVER = \
+'Access denied to the Jira server. Please check your credentials.'
+ERROR_ACCESSING_THE_JIRA_SERVER = 'Error accessing the Jira server: '
+ 
+JIRA_HOST_NAME = 'jira.etask.de'
+JIRA_USER = 'HIER USERNAME'
+JIRA_PASSWORD = 'HIER KENNWORT'
+JIRA_TICKET_PATTERN = re.compile(r'\[(\w+?-\d+?)\]')
+ 
+ 
+def check_message(message):
+    tickets = JIRA_TICKET_PATTERN.findall(message)
+ 
+    if not tickets:
+        return NO_JIRA_TICKET_MESSAGE
+ 
+    if len(tickets) > 1:
+        return TOO_MANY_JIRA_TICKETS_MESSAGE
+ 
+    ticket = tickets[0]
+ 
+    try:
+        conn = httplib.HTTPSConnection(JIRA_HOST_NAME)
+        try:
+            headers = {}
+            headers['Authorization'] = 'Basic %s' % base64.standard_b64encode('%s:%s' % (JIRA_USER, JIRA_PASSWORD)).replace('\n', '')
+            conn.request('GET', '/rest/api/2/issue/' + ticket, headers=headers)
+            res = conn.getresponse()
+            res.read()
+            if res.status == 200:
+                return None
+            if res.status == 404:
+                return INVALID_JIRA_TICKET_MESSAGE
+            if res.status == 401 or res.status == 403:
+                return NO_ACCESS_TO_JIRA_SERVER
+            return ERROR_ACCESSING_THE_JIRA_SERVER + str(res.status)
+        finally:
+            conn.close()
+    except IOError as e:
+        return ERROR_ACCESSING_THE_JIRA_SERVER + str(e)
+ 
+    return None
+ 
+ 
+msg_file = open(sys.argv[1], 'r')
+msg = msg_file.read()
+ 
+err_msg = check_message(msg)
+ 
+if err_msg:
+    print >> sys.stderr, 'Error: %s\nCommit message:\n%s' % (err_msg, msg)
+    sys.exit(1)

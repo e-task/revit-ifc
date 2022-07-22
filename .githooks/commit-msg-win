@@ -1,0 +1,4 @@
+#!C:/Program\ Files/Git/usr/bin/sh.exe
+echo
+exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\.githooks\CheckCommitMessage.ps1" $1
+exit
