@@ -45,7 +45,7 @@ Function CheckJiraCode([string]$CommitMessage) {
     #$CommitMessage = "IT-123 : Dies ist die Message in a bottle"
     #$REGEX_ISSUE_ID="FM (1)"
 
-    $ValidJiraProjects = {'FM','KP','IT','FO'}
+    $ValidJiraProjects = {'FM','KP','IT','FO', 'ZX', 'ZY', 'AP', 'PI', 'HOT', 'PROJ', 'SM'}
     
     # Regel 1: Erste beiden Zeichen müssen eines der validen Projektkürzel sein
     # Regel 2: Dann folgt ein Bindestrich
@@ -53,7 +53,7 @@ Function CheckJiraCode([string]$CommitMessage) {
     # Regel 4: Dann darf kein Zeilenumbruch kommen
     # Regel 5: Dann muss ein Leerzeichen kommen
 
-    $REGEX_ISSUE_ID="(KP|IT|FO|FM)-\d+[^\S\r\n]"
+    $REGEX_ISSUE_ID="(ZX|ZY|AP|FM|PI|FO|HOT|IT|KP|PROJ|SM)-\d+[^\S\r\n]"
 
     Write-Host "Checking the commit message: "$CommitMessage 
     Write-Host "against this rexex: "$REGEX_ISSUE_ID 
